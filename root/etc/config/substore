@@ -1,0 +1,4 @@
+# LuCI configuration for luci-app-substore
+
+config globals 'settings'
+	option enabled '0'

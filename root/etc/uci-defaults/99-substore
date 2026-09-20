@@ -1,0 +1,8 @@
+#!/bin/sh
+
+uci -q batch <<-EOF
+	set substore.settings.enabled='0'
+	commit substore
+EOF
+
+exit 0
