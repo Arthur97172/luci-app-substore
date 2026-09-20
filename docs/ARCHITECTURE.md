@@ -78,10 +78,13 @@ LuCI 前端（`/usr/lib/lua/luci/`）：
 
 ## 6. 兼容性约束
 
-- 目标 LuCI 使用 Lua 兼容模式，需依赖 `luci-lua-runtime`（23.05+）/ `luci-compat`（更早）
+- 目标 LuCI 使用 Lua 兼容模式，需依赖 `luci-lua-runtime` + `luci-compat`（23.05+）
+- Lua 控制器沿用 `module()` + `entry()` 风格（24.10 有效，活跃插件仍在使用）
+- **25.12 风险**：LuCI 模板优先级已转向 `.ut`（ucode），`.htm` 为 Legacy。阶段0先以 `.htm` 建立骨架，**阶段4 迁移到 `.ut`** 确保 25.12 兼容
 - 不假设所有 OpenWrt 版本依赖一致，分版本适配
 - 纯 Lua 核心库优先用 Lua 5.1 标准库（luci 自带 lua5.1），避免 luarocks 依赖
 - 如需要 YAML 解析：优先评估纯 Lua 实现或 luci 内置，避免重运行时
+- `/lib/functions/luci.sh` 已移除，postinst 用 `rm -f /tmp/luci-indexcache` + `/etc/init.d/luci reload` 刷新缓存
 
 ## 7. 文档清单
 

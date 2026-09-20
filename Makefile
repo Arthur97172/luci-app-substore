@@ -10,7 +10,7 @@ PKG_NAME:=luci-app-substore
 PKG_VERSION:=0.1.0
 PKG_RELEASE:=1
 
-LUCI_DEPENDS:=+luci-lua-runtime +curl +lua5.1
+LUCI_DEPENDS:=+luci-lua-runtime +luci-compat +lua5.1
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/luci/luci.mk

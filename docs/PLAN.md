@@ -60,6 +60,8 @@
 - 规则配置页
 - 完整错误处理、日志
 - 分版本依赖适配（23.05 / 24.10 / 25.12）
+- **模板迁移：`.htm` → `.ut`（ucode），确保 25.12 兼容**（调研：25.12 模板优先级 `.ut` only）
+- 订阅下载方式定案：curl vs Lua socket（影响 SSRF 防护实现，阶段1评估）
 - docs/SECURITY.md、docs/TESTING.md、CHANGELOG.md
 
 **验收**：定时更新生效、错误日志可读、各 OpenWrt 版本兼容、安全测试通过。
