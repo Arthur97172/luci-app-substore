@@ -1,0 +1,67 @@
+<%+header%>
+<%
+	local http = require("luci.http")
+	local core = require("substore.core")
+	local node = require("substore.node")
+	local id = http.formvalue("id") or luci.dispatcher.context.query.id or ""
+	local meta = id ~= "" and core.get(id) or nil
+	local nodes = id ~= "" and core.read_nodes(id) or {}
+	local proto = http.formvalue("proto") or luci.dispatcher.context.query.proto or ""
+	local keyword = http.formvalue("keyword") or luci.dispatcher.context.query.keyword or ""
+	local sort_by = http.formvalue("sort") or luci.dispatcher.context.query.sort or "name"
+	local sort_desc = http.formvalue("desc") == "1"
+
+	if proto ~= "" then nodes = node.filter(nodes, {proto = proto}) end
+	if keyword ~= "" then nodes = node.filter(nodes, {keyword = keyword}) end
+	nodes = node.sort(nodes, sort_by, sort_desc)
+%>
+<h2><%:Nodes%> — <%=meta and meta.name or ""%></h2>
+<div style="margin:0.5em 0">
+	<a class="cbi-button cbi-button-reset" href="<%=luci.dispatcher.build_url('admin/services/substore/list')%>"><%:Back to subscriptions%></a>
+</div>
+
+<form method="get" action="<%=luci.dispatcher.build_url('admin/services/substore/nodes')%>" class="cbi-map">
+	<input type="hidden" name="id" value="<%=id%>"/>
+	<div style="display:flex;gap:0.5em;align-items:center;margin:0.5em 0">
+		<label><%:Protocol%>:
+			<select name="proto">
+				<option value=""><%:All%></option>
+				<% for _, p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do %>
+					<option value="<%=p%>" <%=proto==p and "selected" or ""%>><%=p%></option>
+				<% end %>
+			</select>
+		</label>
+		<label><%:Keyword%>: <input type="text" name="keyword" value="<%=keyword%>"/></label>
+		<label><%:Sort by%>:
+			<select name="sort">
+				<option value="name" <%=sort_by=="name" and "selected" or ""%>>name</option>
+				<option value="server" <%=sort_by=="server" and "selected" or ""%>>server</option>
+				<option value="proto" <%=sort_by=="proto" and "selected" or ""%>>proto</option>
+				<option value="port" <%=sort_by=="port" and "selected" or ""%>>port</option>
+			</select>
+		</label>
+		<label><input type="checkbox" name="desc" value="1" <%=sort_desc and "checked" or ""%>/><%:Desc%></label>
+		<input type="submit" class="cbi-button cbi-button-apply" value="<%:Filter%>"/>
+	</div>
+</form>
+
+<table class="cbi-section-table">
+	<tr class="cbi-section-table-titles">
+		<th><%:Name%></th>
+		<th><%:Protocol%></th>
+		<th><%:Server%></th>
+		<th><%:Port%></th>
+	</tr>
+	<% for _, n in ipairs(nodes) do %>
+	<tr class="cbi-section-table-row">
+		<td><%=n.name or ""%></td>
+		<td><%=n.proto or ""%></td>
+		<td><%=n.server or ""%></td>
+		<td><%=n.port or ""%></td>
+	</tr>
+	<% end %>
+	<% if #nodes == 0 then %>
+	<tr class="cbi-section-table-row"><td colspan="4" style="text-align:center;color:#808080"><%:No nodes found.%></td></tr>
+	<% end %>
+</table>
+<%+footer%>
