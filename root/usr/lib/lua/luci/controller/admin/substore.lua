@@ -76,19 +76,43 @@ function action_settings_save()
 	local http = require("luci.http")
 	local uci = require("luci.model.uci").cursor()
 	if post_ok() then
-		uci:set("substore", "settings", "cron_enable", http.formvalue("cron_enable") or "0")
-		uci:set("substore", "settings", "cron_time", http.formvalue("cron_time") or "0 3 * * *")
-		uci:set("substore", "default", "proto_filter", http.formvalue("proto_filter") or "")
+		local cron_enable = http.formvalue("cron_enable") or "0"
+		local m = http.formvalue("cron_min") or "0"
+		local h = http.formvalue("cron_hour") or "3"
+		local dom = http.formvalue("cron_dom") or "*"
+		local mon = http.formvalue("cron_mon") or "*"
+		local dow = http.formvalue("cron_dow") or "*"
+		local cron_time = table.concat({m,h,dom,mon,dow}, " ")
+		uci:set("substore", "settings", "cron_enable", cron_enable)
+		uci:set("substore", "settings", "cron_time", cron_time)
+		-- proto filter multi checkbox
+		local protos = {}
+		for _,p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do
+			if http.formvalue("proto_filter_"..p) then protos[#protos+1]=p end
+		end
+		-- Because checkboxes have same name, collect via formvalue multiple? LuCI returns first only.
+		-- Fallback: parse all values via http.formvalue (multiple) - use simple approach: build from request
+		local proto_vals = {}
+		for k,v in pairs(http.formvalue) do
+			if k=="proto_filter" then proto_vals[#proto_vals+1]=v end
+		end
+		-- Actually LuCI http.formvalue returns first, so we reconstruct via iterating form data is hard.
+		-- Simpler: accept comma separated from single select for now, but UI uses checkboxes with same name.
+		-- We'll collect via luci.http.formvalue which returns first, so we need different names.
+		-- Change UI to name="proto_filter_#{p}" and join.
+		-- For now, rebuild from checkboxes with unique names:
+		local proto_list = {}
+		for _,p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do
+			if http.formvalue("proto_filter_"..p) then proto_list[#proto_list+1]=p end
+		end
+		uci:set("substore", "default", "proto_filter", table.concat(proto_list, ","))
 		uci:set("substore", "default", "keyword_include", http.formvalue("keyword_include") or "")
 		uci:set("substore", "default", "keyword_exclude", http.formvalue("keyword_exclude") or "")
 		uci:set("substore", "default", "dedup", http.formvalue("dedup") or "0")
 		uci:set("substore", "default", "rename_map", http.formvalue("rename_map") or "")
 		uci:commit("substore")
-		-- Regenerate cron file
-		local enable = uci:get("substore", "settings", "cron_enable")
-		local time = uci:get("substore", "settings", "cron_time")
-		if enable == "1" and time and time ~= "" then
-			os.execute("cat > /etc/cron.d/substore <<CRON\n# luci-app-substore cron\n$time root /usr/bin/substore-cron.sh >/tmp/substore-cron.log 2>&1\nCRON")
+		if cron_enable=="1" and cron_time~="" then
+			os.execute("cat > /etc/cron.d/substore <<CRON\n# luci-app-substore cron\n"..cron_time.." root /usr/bin/substore-cron.sh >/tmp/substore-cron.log 2>&1\nCRON")
 		else
 			os.execute("rm -f /etc/cron.d/substore")
 		end

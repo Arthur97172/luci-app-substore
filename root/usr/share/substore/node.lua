@@ -86,4 +86,57 @@ function M.rename(node, new_name)
 	return node
 end
 
+-- 应用规则集到节点列表
+function M.apply_rules(nodes, rules)
+	rules = rules or {}
+	-- 协议过滤
+	if rules.proto_filter and rules.proto_filter ~= "" then
+		local set = {}
+		for p in rules.proto_filter:gmatch("[^,]+") do set[p]=true end
+		local out = {}
+		for _,n in ipairs(nodes) do
+			if set[n.proto] then out[#out+1]=n end
+		end
+		nodes = out
+	end
+	-- 关键词包含
+	if rules.keyword_include and rules.keyword_include ~= "" then
+		local kw = rules.keyword_include:lower()
+		local out = {}
+		for _,n in ipairs(nodes) do
+			if (n.name or ""):lower():find(kw,1,true) or (n.server or ""):lower():find(kw,1,true) then
+				out[#out+1]=n
+			end
+		end
+		nodes = out
+	end
+	-- 关键词排除
+	if rules.keyword_exclude and rules.keyword_exclude ~= "" then
+		local kw = rules.keyword_exclude:lower()
+		local out = {}
+		for _,n in ipairs(nodes) do
+			if not ((n.name or ""):lower():find(kw,1,true) or (n.server or ""):lower():find(kw,1,true)) then
+				out[#out+1]=n
+			end
+		end
+		nodes = out
+	end
+	-- 去重
+	if rules.dedup == "1" or rules.dedup == true then
+		nodes = M.dedup(nodes)
+	end
+	-- 重命名映射
+	if rules.rename_map and rules.rename_map ~= "" then
+		local map = {}
+		for line in rules.rename_map:gmatch("[^\r\n]+") do
+			local k,v = line:match("^%s*([^=]+)%s*=%s*(.+)%s*$")
+			if k and v then map[k]=v end
+		end
+		for _,n in ipairs(nodes) do
+			if map[n.name] then n.name = map[n.name] end
+		end
+	end
+	return nodes
+end
+
 return M

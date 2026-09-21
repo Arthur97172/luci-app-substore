@@ -149,6 +149,18 @@ function M.sync(id)
 	return #nodes
 end
 
+-- 读取 UCI 规则
+local function load_rules()
+	local uci = require("luci.model.uci").cursor()
+	local r = {}
+	r.proto_filter = uci:get("substore", "default", "proto_filter") or ""
+	r.keyword_include = uci:get("substore", "default", "keyword_include") or ""
+	r.keyword_exclude = uci:get("substore", "default", "keyword_exclude") or ""
+	r.dedup = uci:get("substore", "default", "dedup") or "0"
+	r.rename_map = uci:get("substore", "default", "rename_map") or ""
+	return r
+end
+
 -- 合并多个订阅的节点
 function M.merge(ids, opts)
 	opts = opts or {}
@@ -160,13 +172,19 @@ function M.merge(ids, opts)
 			all[#all + 1] = n
 		end
 	end
+	-- 应用 UCI 规则
+	local rules = load_rules()
+	all = node_mod.apply_rules(all, rules)
+	-- 再应用 opts 过滤
 	if opts.proto then
 		all = node_mod.filter(all, { proto = opts.proto })
 	end
 	if opts.keyword and opts.keyword ~= "" then
 		all = node_mod.filter(all, { keyword = opts.keyword })
 	end
-	all = node_mod.dedup(all)
+	if opts.dedup then
+		all = node_mod.dedup(all)
+	end
 	if opts.sort then
 		all = node_mod.sort(all, opts.sort, opts.desc)
 	end

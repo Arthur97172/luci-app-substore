@@ -1,52 +1,64 @@
 <%+header%>
 <%
-	local sys = require("luci.sys")
 	local uci = require("luci.model.uci").cursor()
-	local s = uci:get("substore", "settings") or {}
-	local r = uci:get("substore", "default") or {}
+	local s = uci:get_all("substore", "settings") or {}
+	local r = uci:get_all("substore", "default") or {}
+	-- parse cron
+	local cron = s.cron_time or "0 3 * * *"
+	local m,h,dom,mon,dow = cron:match("^(%S+) (%S+) (%S+) (%S+) (%S+)$")
+	m = m or "0"; h = h or "3"; dom = dom or "*"; mon = mon or "*"; dow = dow or "*"
 %>
 <h2><%:Settings%></h2>
 <form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/settings_save')%>" class="cbi-map">
 	<input type="hidden" name="token" value="<%=token%>"/>
 	<div class="cbi-section">
-		<h3><%:General%></h3>
+		<h3>通用</h3>
 		<div class="cbi-value">
-			<label><%:Enable cron%></label>
+			<label>启用定时更新</label>
 			<input type="checkbox" name="cron_enable" value="1" <%=s.cron_enable=="1" and "checked" or ""%>/>
 		</div>
 		<div class="cbi-value">
-			<label><%:Cron time%></label>
-			<input type="text" name="cron_time" value="<%=s.cron_time or '0 3 * * *'%>" placeholder="0 3 * * *"/>
-			<div class="cbi-value-description"><%:Cron expression, e.g. 0 3 * * *%></div>
+			<label>定时更新时间</label>
+			<div style="display:flex;gap:0.5em">
+				<select name="cron_min"><% for i=0,59 do %><option value="<%=i%>" <%=tonumber(m)==i and "selected" or ""%>><%=i%></option><% end %></select> 分钟
+				<select name="cron_hour"><% for i=0,23 do %><option value="<%=i%>" <%=tonumber(h)==i and "selected" or ""%>><%=i%></option><% end %></select> 小时
+				<select name="cron_dom"><% for _,v in ipairs({"*","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31"}) do %><option value="<%=v%>" <%=dom==v and "selected" or ""%>><%=v%></option><% end %></select> 日
+				<select name="cron_mon"><% for _,v in ipairs({"*","1","2","3","4","5","6","7","8","9","10","11","12"}) do %><option value="<%=v%>" <%=mon==v and "selected" or ""%>><%=v%></option><% end %></select> 月
+				<select name="cron_dow"><% for _,v in ipairs({"*","0","1","2","3","4","5","6"}) do %><option value="<%=v%>" <%=dow==v and "selected" or ""%>><%=v%></option><% end %></select> 周
+			</div>
 		</div>
 	</div>
 	<div class="cbi-section">
-		<h3><%:Rules%></h3>
+		<h3>规则</h3>
 		<div class="cbi-value">
-			<label><%:Protocol filter%></label>
-			<input type="text" name="proto_filter" value="<%=r.proto_filter or ''%>" placeholder="vmess,vless,trojan"/>
+			<label>协议过滤</label>
+			<div>
+				<% for _,p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do %>
+					<label style="margin-right:1em"><input type="checkbox" name="proto_filter_<%=p%>" value="1" <%= (r.proto_filter or ""):find(p,1,true) and "checked" or ""%>> <%=p%></label>
+				<% end %>
+			</div>
 		</div>
 		<div class="cbi-value">
-			<label><%:Keyword include%></label>
+			<label>关键词包含</label>
 			<input type="text" name="keyword_include" value="<%=r.keyword_include or ''%>"/>
 		</div>
 		<div class="cbi-value">
-			<label><%:Keyword exclude%></label>
+			<label>关键词排除</label>
 			<input type="text" name="keyword_exclude" value="<%=r.keyword_exclude or ''%>"/>
 		</div>
 		<div class="cbi-value">
-			<label><%:Dedup%></label>
+			<label>去重</label>
 			<input type="checkbox" name="dedup" value="1" <%=r.dedup=="1" and "checked" or ""%>/>
 		</div>
 		<div class="cbi-value">
-			<label><%:Rename map%></label>
+			<label>重命名映射</label>
 			<textarea name="rename_map" rows="4" cols="60"><%=r.rename_map or ''%></textarea>
-			<div class="cbi-value-description"><%:One per line: old=new%></div>
+			<div class="cbi-value-description">每行格式：旧名称=新名称</div>
 		</div>
 	</div>
 	<div class="cbi-page-actions">
-		<input type="submit" class="cbi-button cbi-button-apply" value="<%:Save%>"/>
-		<a class="cbi-button cbi-button-reset" href="<%=luci.dispatcher.build_url('admin/services/substore/list')%>"><%:Back%></a>
+		<input type="submit" class="cbi-button cbi-button-apply" value="保存"/>
+		<a class="cbi-button cbi-button-reset" href="<%=luci.dispatcher.build_url('admin/services/substore/list')%>">返回</a>
 	</div>
 </form>
 <%+footer%>
