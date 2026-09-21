@@ -3,13 +3,15 @@
 	local http = require("luci.http")
 	local core = require("substore.core")
 	local node = require("substore.node")
-	local id = http.formvalue("id") or luci.dispatcher.context.query.id or ""
+	local ctx = luci.dispatcher.context or {}
+	local q = ctx.query or {}
+	local id = http.formvalue("id") or q.id or ""
 	local meta = id ~= "" and core.get(id) or nil
 	local nodes = id ~= "" and core.read_nodes(id) or {}
-	local proto = http.formvalue("proto") or luci.dispatcher.context.query.proto or ""
-	local keyword = http.formvalue("keyword") or luci.dispatcher.context.query.keyword or ""
-	local sort_by = http.formvalue("sort") or luci.dispatcher.context.query.sort or "name"
-	local sort_desc = http.formvalue("desc") == "1"
+	local proto = http.formvalue("proto") or q.proto or ""
+	local keyword = http.formvalue("keyword") or q.keyword or ""
+	local sort_by = http.formvalue("sort") or q.sort or "name"
+	local sort_desc = http.formvalue("desc") == "1" or q.desc == "1"
 
 	if proto ~= "" then nodes = node.filter(nodes, {proto = proto}) end
 	if keyword ~= "" then nodes = node.filter(nodes, {keyword = keyword}) end
