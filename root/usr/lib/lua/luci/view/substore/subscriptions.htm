@@ -1,0 +1,66 @@
+<%+header%>
+<h2><%:Subscriptions%></h2>
+
+<div class="cbi-section">
+	<a class="cbi-button cbi-button-add" href="<%=luci.dispatcher.build_url('admin/services/substore/form')%>">
+		<%:Add subscription%>
+	</a>
+</div>
+
+<table class="cbi-section-table">
+	<tr class="cbi-section-table-titles">
+		<th><%:Name%></th>
+		<th><%:URL%></th>
+		<th><%:Nodes%></th>
+		<th><%:Updated%></th>
+		<th><%:Status%></th>
+		<th><%:Actions%></th>
+	</tr>
+
+<%
+	local core = require("substore.core")
+	local items = core.list()
+	for _, it in ipairs(items) do
+		local status_color = "#808080"
+		local status_text = luci.i18n.translate("Pending")
+		if it.error and it.error ~= "" then
+			status_color = "#cc0000"
+			status_text = it.error
+		elseif it.node_count and it.node_count > 0 then
+			status_color = "#006600"
+			status_text = luci.i18n.translate("OK")
+		end
+%>
+	<tr class="cbi-section-table-row">
+		<td><%=it.name%></td>
+		<td class="cbi-value-description" style="word-break:break-all"><%=it.url%></td>
+		<td><%=it.node_count or 0%></td>
+		<td><%=it.last_update and os.date("%Y-%m-%d %H:%M", it.last_update) or "-"%></td>
+		<td style="color:<%=status_color%>"><%=status_text%></td>
+		<td>
+			<form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/update')%>" style="display:inline">
+				<input type="hidden" name="token" value="<%=token%>"/>
+				<input type="hidden" name="id" value="<%=it.id%>"/>
+				<input type="submit" class="cbi-button cbi-button-action" value="<%:Update%>"/>
+			</form>
+			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/form')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Edit%></a>
+			<form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/delete')%>" style="display:inline"
+			      onsubmit="return confirm('<%=luci.util.pcdata(luci.i18n.translate('Delete this subscription?'))%>');">
+				<input type="hidden" name="token" value="<%=token%>"/>
+				<input type="hidden" name="id" value="<%=it.id%>"/>
+				<input type="submit" class="cbi-button cbi-button-reset" value="<%:Delete%>"/>
+			</form>
+		</td>
+	</tr>
+<%
+	end
+	if #items == 0 then
+%>
+	<tr class="cbi-section-table-row">
+		<td colspan="6" style="text-align:center;color:#808080"><%:No subscriptions yet.%></td>
+	</tr>
+<%
+	end
+%>
+</table>
+<%+footer%>
