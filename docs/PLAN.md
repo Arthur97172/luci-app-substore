@@ -77,4 +77,7 @@
 - [x] 调研：OpenWrt LuCI 24.10 有 luci-lua-runtime（Lua 兼容层），Lua 方案可行
 - [x] 架构设计：docs/ARCHITECTURE.md
 - [x] 分阶段计划：本文档
-- [ ] 待用户确认架构后开始阶段 0
+- [x] 阶段0：骨架构建链路验证通过（菜单位于 服务 → Subscriptions）
+- [x] 阶段1：订阅 CRUD + 下载解析核心实现（core/util/node/parser/http + LuCI 列表/表单）
+- [ ] 阶段1验证：用户在设备上添加真实订阅、手动更新、查看节点数/更新时间
+- [ ] 阶段2：节点处理与筛选
