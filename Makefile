@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-substore
 PKG_VERSION:=0.1.0
-PKG_RELEASE:=6
+PKG_RELEASE:=7
 
 LUCI_DEPENDS:=+luci-lua-runtime +luci-compat
 
@@ -46,6 +46,12 @@ define Package/luci-app-substore/install
 
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./root/etc/uci-defaults/99-substore $(1)/etc/uci-defaults/99-substore
+
+	$(INSTALL_DIR) $(1)/etc/cron.d
+	$(INSTALL_CONF) ./root/etc/cron.d/substore $(1)/etc/cron.d/substore
+
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) ./root/usr/bin/substore-cron.sh $(1)/usr/bin/substore-cron.sh
 
 	$(INSTALL_DIR) $(1)/usr/lib/lua/substore
 	$(INSTALL_DATA) ./root/usr/share/substore/core.lua $(1)/usr/lib/lua/substore/core.lua
