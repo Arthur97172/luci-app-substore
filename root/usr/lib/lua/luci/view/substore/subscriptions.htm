@@ -45,6 +45,7 @@
 			</form>
 			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/form')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Edit%></a>
 			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/nodes')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Nodes%></a>
+			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/output')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Output%></a>
 			<form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/delete')%>" style="display:inline"
 			      onsubmit="return confirm('<%=luci.util.pcdata(luci.i18n.translate('Delete this subscription?'))%>');">
 				<input type="hidden" name="token" value="<%=token%>"/>

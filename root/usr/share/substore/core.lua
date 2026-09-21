@@ -149,4 +149,28 @@ function M.sync(id)
 	return #nodes
 end
 
+-- 合并多个订阅的节点
+function M.merge(ids, opts)
+	opts = opts or {}
+	local all = {}
+	local node_mod = require("substore.node")
+	for _, id in ipairs(ids) do
+		local nodes = M.read_nodes(id)
+		for _, n in ipairs(nodes) do
+			all[#all + 1] = n
+		end
+	end
+	if opts.proto then
+		all = node_mod.filter(all, { proto = opts.proto })
+	end
+	if opts.keyword and opts.keyword ~= "" then
+		all = node_mod.filter(all, { keyword = opts.keyword })
+	end
+	all = node_mod.dedup(all)
+	if opts.sort then
+		all = node_mod.sort(all, opts.sort, opts.desc)
+	end
+	return all
+end
+
 return M

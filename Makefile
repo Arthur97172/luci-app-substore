@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-substore
 PKG_VERSION:=0.1.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 
 LUCI_DEPENDS:=+luci-lua-runtime +luci-compat
 
@@ -53,6 +53,7 @@ define Package/luci-app-substore/install
 	$(INSTALL_DATA) ./root/usr/share/substore/node.lua $(1)/usr/lib/lua/substore/node.lua
 	$(INSTALL_DATA) ./root/usr/share/substore/parser.lua $(1)/usr/lib/lua/substore/parser.lua
 	$(INSTALL_DATA) ./root/usr/share/substore/http.lua $(1)/usr/lib/lua/substore/http.lua
+	$(INSTALL_DATA) ./root/usr/share/substore/output.lua $(1)/usr/lib/lua/substore/output.lua
 
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/controller/admin
 	$(INSTALL_DATA) ./root/usr/lib/lua/luci/controller/admin/substore.lua $(1)/usr/lib/lua/luci/controller/admin/substore.lua
@@ -61,6 +62,7 @@ define Package/luci-app-substore/install
 	$(INSTALL_DATA) ./root/usr/lib/lua/luci/view/substore/subscriptions.htm $(1)/usr/lib/lua/luci/view/substore/subscriptions.htm
 	$(INSTALL_DATA) ./root/usr/lib/lua/luci/view/substore/form.htm $(1)/usr/lib/lua/luci/view/substore/form.htm
 	$(INSTALL_DATA) ./root/usr/lib/lua/luci/view/substore/nodes.htm $(1)/usr/lib/lua/luci/view/substore/nodes.htm
+	$(INSTALL_DATA) ./root/usr/lib/lua/luci/view/substore/output.htm $(1)/usr/lib/lua/luci/view/substore/output.htm
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-substore.json $(1)/usr/share/luci/menu.d/luci-app-substore.json
