@@ -120,21 +120,27 @@ end
 
 -- 下载并解析订阅，写入节点文件并更新状态。成功返回 node_count，失败返回 nil, err
 function M.sync(id)
+	local log = function(msg) os.execute("logger -t luci-app-substore " .. string.format("%q", msg)) end
+	log("Sync start id="..tostring(id))
 	local meta = M.get(id)
-	if not meta then return nil, "订阅不存在" end
-	if not meta.url or meta.url == "" then return nil, "无订阅 URL" end
+	if not meta then log("Sync fail: subscription not found"); return nil, "订阅不存在" end
+	if not meta.url or meta.url == "" then log("Sync fail: no URL"); return nil, "无订阅 URL" end
 
 	local content, err = http.download(meta.url, { max_size = M.MAX_SIZE, timeout = M.TIMEOUT })
 	if not content then
+		log("Download fail: " .. tostring(err))
 		M.save_meta(id, { error = err, last_update = os.time() })
 		return nil, err
 	end
+	log("Download ok size="..#content)
 
 	local res, perr = parser.parse(content)
 	if not res or not res.nodes then
+		log("Parse fail: " .. tostring(perr))
 		M.save_meta(id, { error = perr or "解析失败", node_count = 0, last_update = os.time() })
 		return nil, perr or "解析失败"
 	end
+	log("Parse ok nodes="..#res.nodes)
 
 	local nodes = res.nodes
 	if not M.write_nodes(id, nodes) then
