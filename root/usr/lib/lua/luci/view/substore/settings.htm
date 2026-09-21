@@ -7,6 +7,8 @@
 	local cron = s.cron_time or "0 3 * * *"
 	local m,h,dom,mon,dow = cron:match("^(%S+) (%S+) (%S+) (%S+) (%S+)$")
 	m = m or "0"; h = h or "3"; dom = dom or "*"; mon = mon or "*"; dow = dow or "*"
+	-- ensure cron_enable defaults to 1 if nil
+	if s.cron_enable == nil then s.cron_enable = "1" end
 %>
 <h2><%:Settings%></h2>
 <form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/settings_save')%>" class="cbi-map">
@@ -16,6 +18,7 @@
 		<div class="cbi-value">
 			<label>启用定时更新</label>
 			<input type="checkbox" name="cron_enable" value="1" <%=s.cron_enable=="1" and "checked" or ""%>/>
+			<input type="hidden" name="cron_enable_hidden" value="0"/>
 		</div>
 		<div class="cbi-value">
 			<label>定时更新时间</label>
