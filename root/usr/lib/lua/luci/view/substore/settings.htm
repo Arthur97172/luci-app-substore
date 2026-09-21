@@ -1,0 +1,52 @@
+<%+header%>
+<%
+	local sys = require("luci.sys")
+	local uci = require("luci.model.uci").cursor()
+	local s = uci:get("substore", "settings") or {}
+	local r = uci:get("substore", "default") or {}
+%>
+<h2><%:Settings%></h2>
+<form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/settings_save')%>" class="cbi-map">
+	<input type="hidden" name="token" value="<%=token%>"/>
+	<div class="cbi-section">
+		<h3><%:General%></h3>
+		<div class="cbi-value">
+			<label><%:Enable cron%></label>
+			<input type="checkbox" name="cron_enable" value="1" <%=s.cron_enable=="1" and "checked" or ""%>/>
+		</div>
+		<div class="cbi-value">
+			<label><%:Cron time%></label>
+			<input type="text" name="cron_time" value="<%=s.cron_time or '0 3 * * *'%>" placeholder="0 3 * * *"/>
+			<div class="cbi-value-description"><%:Cron expression, e.g. 0 3 * * *%></div>
+		</div>
+	</div>
+	<div class="cbi-section">
+		<h3><%:Rules%></h3>
+		<div class="cbi-value">
+			<label><%:Protocol filter%></label>
+			<input type="text" name="proto_filter" value="<%=r.proto_filter or ''%>" placeholder="vmess,vless,trojan"/>
+		</div>
+		<div class="cbi-value">
+			<label><%:Keyword include%></label>
+			<input type="text" name="keyword_include" value="<%=r.keyword_include or ''%>"/>
+		</div>
+		<div class="cbi-value">
+			<label><%:Keyword exclude%></label>
+			<input type="text" name="keyword_exclude" value="<%=r.keyword_exclude or ''%>"/>
+		</div>
+		<div class="cbi-value">
+			<label><%:Dedup%></label>
+			<input type="checkbox" name="dedup" value="1" <%=r.dedup=="1" and "checked" or ""%>/>
+		</div>
+		<div class="cbi-value">
+			<label><%:Rename map%></label>
+			<textarea name="rename_map" rows="4" cols="60"><%=r.rename_map or ''%></textarea>
+			<div class="cbi-value-description"><%:One per line: old=new%></div>
+		</div>
+	</div>
+	<div class="cbi-page-actions">
+		<input type="submit" class="cbi-button cbi-button-apply" value="<%:Save%>"/>
+		<a class="cbi-button cbi-button-reset" href="<%=luci.dispatcher.build_url('admin/services/substore/list')%>"><%:Back%></a>
+	</div>
+</form>
+<%+footer%>

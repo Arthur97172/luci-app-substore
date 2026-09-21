@@ -13,6 +13,8 @@ function index()
 	entry({"admin", "services", "substore", "form"}, template("substore/form"), nil)
 	entry({"admin", "services", "substore", "nodes"}, template("substore/nodes"), nil)
 	entry({"admin", "services", "substore", "output"}, template("substore/output"), nil)
+	entry({"admin", "services", "substore", "settings"}, template("substore/settings"), nil)
+	entry({"admin", "services", "substore", "settings_save"}, call("action_settings_save"), nil)
 	entry({"admin", "services", "substore", "create"}, call("action_create"), nil)
 	entry({"admin", "services", "substore", "save"}, call("action_save"), nil)
 	entry({"admin", "services", "substore", "delete"}, call("action_delete"), nil)
@@ -68,4 +70,28 @@ function action_update()
 		core.sync(http.formvalue("id") or "")
 	end
 	back_to_list()
+end
+
+function action_settings_save()
+	local http = require("luci.http")
+	local uci = require("luci.model.uci").cursor()
+	if post_ok() then
+		uci:set("substore", "settings", "cron_enable", http.formvalue("cron_enable") or "0")
+		uci:set("substore", "settings", "cron_time", http.formvalue("cron_time") or "0 3 * * *")
+		uci:set("substore", "default", "proto_filter", http.formvalue("proto_filter") or "")
+		uci:set("substore", "default", "keyword_include", http.formvalue("keyword_include") or "")
+		uci:set("substore", "default", "keyword_exclude", http.formvalue("keyword_exclude") or "")
+		uci:set("substore", "default", "dedup", http.formvalue("dedup") or "0")
+		uci:set("substore", "default", "rename_map", http.formvalue("rename_map") or "")
+		uci:commit("substore")
+		-- Regenerate cron file
+		local enable = uci:get("substore", "settings", "cron_enable")
+		local time = uci:get("substore", "settings", "cron_time")
+		if enable == "1" and time and time ~= "" then
+			os.execute("cat > /etc/cron.d/substore <<CRON\n# luci-app-substore cron\n$time root /usr/bin/substore-cron.sh >/tmp/substore-cron.log 2>&1\nCRON")
+		else
+			os.execute("rm -f /etc/cron.d/substore")
+		end
+	end
+	http.redirect(luci.dispatcher.build_url("admin", "services", "substore", "settings"))
 end
