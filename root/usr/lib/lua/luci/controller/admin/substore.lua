@@ -86,21 +86,6 @@ function action_settings_save()
 		uci:set("substore", "settings", "cron_enable", cron_enable)
 		uci:set("substore", "settings", "cron_time", cron_time)
 		-- proto filter multi checkbox
-		local protos = {}
-		for _,p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do
-			if http.formvalue("proto_filter_"..p) then protos[#protos+1]=p end
-		end
-		-- Because checkboxes have same name, collect via formvalue multiple? LuCI returns first only.
-		-- Fallback: parse all values via http.formvalue (multiple) - use simple approach: build from request
-		local proto_vals = {}
-		for k,v in pairs(http.formvalue) do
-			if k=="proto_filter" then proto_vals[#proto_vals+1]=v end
-		end
-		-- Actually LuCI http.formvalue returns first, so we reconstruct via iterating form data is hard.
-		-- Simpler: accept comma separated from single select for now, but UI uses checkboxes with same name.
-		-- We'll collect via luci.http.formvalue which returns first, so we need different names.
-		-- Change UI to name="proto_filter_#{p}" and join.
-		-- For now, rebuild from checkboxes with unique names:
 		local proto_list = {}
 		for _,p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do
 			if http.formvalue("proto_filter_"..p) then proto_list[#proto_list+1]=p end

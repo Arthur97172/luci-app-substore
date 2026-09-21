@@ -35,9 +35,9 @@
 		<h3>规则</h3>
 		<div class="cbi-value">
 			<label>协议过滤</label>
-			<div>
+			<div style="display:flex;flex-wrap:wrap;gap:0.5em">
 				<% for _,p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do %>
-					<label style="margin-right:1em"><input type="checkbox" name="proto_filter_<%=p%>" value="1" <%= (r.proto_filter or ""):find(p,1,true) and "checked" or ""%>> <%=p%></label>
+					<label style="display:inline-block;margin-right:1em"><input type="checkbox" name="proto_filter_<%=p%>" value="1" <%= (r.proto_filter or ""):find(p,1,true) and "checked" or ""%>> <%=p%></label>
 				<% end %>
 			</div>
 		</div>
