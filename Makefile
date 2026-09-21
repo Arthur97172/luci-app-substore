@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-substore
 PKG_VERSION:=0.1.0
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 LUCI_DEPENDS:=+luci-lua-runtime +luci-compat
 
@@ -47,12 +47,12 @@ define Package/luci-app-substore/install
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./root/etc/uci-defaults/99-substore $(1)/etc/uci-defaults/99-substore
 
-	$(INSTALL_DIR) $(1)/usr/share/substore
-	$(INSTALL_DATA) ./root/usr/share/substore/core.lua $(1)/usr/share/substore/core.lua
-	$(INSTALL_DATA) ./root/usr/share/substore/util.lua $(1)/usr/share/substore/util.lua
-	$(INSTALL_DATA) ./root/usr/share/substore/node.lua $(1)/usr/share/substore/node.lua
-	$(INSTALL_DATA) ./root/usr/share/substore/parser.lua $(1)/usr/share/substore/parser.lua
-	$(INSTALL_DATA) ./root/usr/share/substore/http.lua $(1)/usr/share/substore/http.lua
+	$(INSTALL_DIR) $(1)/usr/lib/lua/substore
+	$(INSTALL_DATA) ./root/usr/share/substore/core.lua $(1)/usr/lib/lua/substore/core.lua
+	$(INSTALL_DATA) ./root/usr/share/substore/util.lua $(1)/usr/lib/lua/substore/util.lua
+	$(INSTALL_DATA) ./root/usr/share/substore/node.lua $(1)/usr/lib/lua/substore/node.lua
+	$(INSTALL_DATA) ./root/usr/share/substore/parser.lua $(1)/usr/lib/lua/substore/parser.lua
+	$(INSTALL_DATA) ./root/usr/share/substore/http.lua $(1)/usr/lib/lua/substore/http.lua
 
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/controller/admin
 	$(INSTALL_DATA) ./root/usr/lib/lua/luci/controller/admin/substore.lua $(1)/usr/lib/lua/luci/controller/admin/substore.lua
