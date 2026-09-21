@@ -50,7 +50,9 @@ function M.to_base64(nodes)
 end
 
 function M.generate(nodes, format)
-	format = (format or "clash").lower()
+	format = (format or "clash")
+	if type(format) ~= "string" then format = "clash" end
+	format = format:lower()
 	if format == "clash" or format == "yaml" then
 		return M.to_clash_yaml(nodes)
 	elseif format == "json" then
