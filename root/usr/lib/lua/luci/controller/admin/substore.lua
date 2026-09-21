@@ -8,9 +8,9 @@ local function back_to_list()
 end
 
 function index()
-	entry({"admin", "services", "substore"}, alias("admin", "services", "substore", "list"), _("Subscriptions"), 60)
+	entry({"admin", "services", "substore"}, alias("admin", "services", "substore", "list"), nil)
 	entry({"admin", "services", "substore", "list"}, template("substore/subscriptions"), _("Subscriptions"), 10)
-	entry({"admin", "services", "substore", "form"}, template("substore/form"), _("Subscriptions"), 20)
+	entry({"admin", "services", "substore", "form"}, template("substore/form"), nil)
 	entry({"admin", "services", "substore", "create"}, call("action_create"), nil)
 	entry({"admin", "services", "substore", "save"}, call("action_save"), nil)
 	entry({"admin", "services", "substore", "delete"}, call("action_delete"), nil)

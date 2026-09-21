@@ -45,9 +45,12 @@ function M.base64_decode(s)
 		if v then
 			n = n * 64 + (v - 1)
 			bits = bits + 6
-			if bits >= 8 then
+			while bits >= 8 do
 				bits = bits - 8
-				out[#out + 1] = string.char(math.floor(n / (2 ^ bits)) % 256)
+				n = math.floor(n)
+				local byte = math.floor(n / (2 ^ bits)) % 256
+				out[#out + 1] = string.char(byte)
+				n = n % (2 ^ bits)
 			end
 		end
 	end
