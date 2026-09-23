@@ -1,7 +1,7 @@
 #
 # Copyright (C) 2026 luci-app-substore
 #
-# This is free software, licensed under the GNU General Public License v2.
+# This is free software, licensed under the GNU General Public License v2 or later.
 #
 
 include $(TOPDIR)/rules.mk
@@ -10,7 +10,7 @@ PKG_NAME:=luci-app-substore
 # 版本约定：每次提交 PKG_RELEASE +1（0.2.0-r1 ~ r9）；
 # 达到 r10 时 PKG_VERSION 末位 +1（0.2.0 -> 0.2.1），PKG_RELEASE 重置为 1。
 PKG_VERSION:=0.2.0
-PKG_RELEASE:=5
+PKG_RELEASE:=6
 
 LUCI_DEPENDS:=+luci-lua-runtime +luci-compat
 

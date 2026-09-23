@@ -1,11 +1,10 @@
 # luci-app-substore
 
+**English** | [简体中文](README.zh-CN.md)
+
 Native **OpenWrt / ImmortalWrt** LuCI application for managing airport / proxy
 subscriptions. Parse nodes from a subscription, filter, deduplicate, rename and
 group them, then re-emit them in a format your client can consume.
-
-参考 [Sub-Store](https://github.com/sub-store-org/Sub-Store) 的功能与用户体验，
-独立设计与实现：不使用 Docker，不依赖外部云端服务，资源占用友好，适配低配置路由器。
 
 ## Features
 
@@ -57,18 +56,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `0.2.0-r5`).
+> [Makefile](Makefile) (currently `0.2.0-r6`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-0.2.0-r5.ipk
+opkg install luci-app-substore-0.2.0-r6.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-0.2.0-r5.apk
+apk add --allow-untrusted luci-app-substore-0.2.0-r6.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.
