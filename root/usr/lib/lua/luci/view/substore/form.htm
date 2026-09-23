@@ -13,6 +13,7 @@
 	local ki = (it and it.keyword_include) or ""
 	local ke = (it and it.keyword_exclude) or ""
 	local dedup = it and (it.dedup == "1" or it.dedup == true)
+	local proxy_enabled = it and (it.proxy_enable == true or it.proxy_enable == "1") or false
 	local util = require("substore.util")
 	-- 剩余流量 / 剩余时长（仅编辑页且有 subscription-userinfo 数据时显示，首页不显示）
 	local traffic_str = nil
@@ -42,6 +43,16 @@
 		<div class="cbi-section-descr" style="margin:0.5em 0">
 			<label for="url" style="display:inline-block;min-width:10em"><%:Subscription URL%></label>
 			<input type="text" id="url" name="url" value="<%=is_edit and it.url or ''%>" style="width:70%"/>
+		</div>
+		<div class="cbi-section-descr" style="margin:0.5em 0">
+			<label style="display:inline-block;min-width:10em">订阅代理</label>
+			<input type="checkbox" name="proxy_enable" value="1" <%=proxy_enabled and "checked" or ""%>
+				onchange="var r=document.getElementById('proxy_row');if(r)r.style.display=this.checked?'block':'none';"/>
+		</div>
+		<div id="proxy_row" class="cbi-section-descr" style="margin:0.5em 0;display:<%=proxy_enabled and "block" or "none"%>">
+			<label for="proxy" style="display:inline-block;min-width:10em">代理地址</label>
+			<input type="text" id="proxy" name="proxy" value="<%=is_edit and it.proxy or ''%>" style="width:60%"/>
+			<div style="color:#808080;margin-top:0.25em">通过代理下载订阅（留空则不使用），支持 http:// 或 socks5:// 地址，如 socks5://192.168.5.1:1080</div>
 		</div>
 		<div class="cbi-section-descr" style="margin:0.5em 0">
 			<label style="display:inline-block;min-width:10em">启用定时更新</label>

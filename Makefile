@@ -10,7 +10,7 @@ PKG_NAME:=luci-app-substore
 # 版本约定：每次提交 PKG_RELEASE +1（0.2.0-r1 ~ r9）；
 # 达到 r10 时 PKG_VERSION 末位 +1（0.2.0 -> 0.2.1），PKG_RELEASE 重置为 1。
 PKG_VERSION:=0.2.0
-PKG_RELEASE:=4
+PKG_RELEASE:=5
 
 LUCI_DEPENDS:=+luci-lua-runtime +luci-compat
 
@@ -22,6 +22,7 @@ define Package/luci-app-substore
 	CATEGORY:=LuCI
 	SUBMENU:=3. Applications
 	TITLE:=Airport subscription manager (Sub-Store like)
+	PKG_MAINTAINER:=Arthur97172 <arthur97172@outlook.com>
 	PKGARCH:=all
 	DEPENDS:=$(LUCI_DEPENDS)
 endef

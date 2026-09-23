@@ -72,10 +72,14 @@ function action_create()
 	if post_ok() then
 		local name = (http.formvalue("name") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		local url = (http.formvalue("url") or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		local proxy_enable = http.formvalue("proxy_enable") or "0"
+		if proxy_enable ~= "1" then proxy_enable = "0" end
+		local proxy = (http.formvalue("proxy") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		if name ~= "" and url ~= "" then
 			local cron_enable, cron_time = read_cron_fields()
 			local rules = read_rules_fields()
 			core.add(name, url, {
+				proxy_enable = proxy_enable, proxy = proxy,
 				cron_enable = cron_enable, cron_time = cron_time,
 				rules_enable = rules.rules_enable, proto_filter = rules.proto_filter,
 				keyword_include = rules.keyword_include, keyword_exclude = rules.keyword_exclude,
@@ -94,11 +98,14 @@ function action_save()
 		local id = http.formvalue("id") or ""
 		local name = (http.formvalue("name") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		local url = (http.formvalue("url") or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		local proxy_enable = http.formvalue("proxy_enable") or "0"
+		if proxy_enable ~= "1" then proxy_enable = "0" end
+		local proxy = (http.formvalue("proxy") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		if name ~= "" and url ~= "" then
 			local cron_enable, cron_time = read_cron_fields()
 			local rules = read_rules_fields()
 			core.save_meta(id, {
-				name = name, url = url,
+				name = name, url = url, proxy_enable = proxy_enable, proxy = proxy,
 				cron_enable = cron_enable, cron_time = cron_time,
 				rules_enable = rules.rules_enable, proto_filter = rules.proto_filter,
 				keyword_include = rules.keyword_include, keyword_exclude = rules.keyword_exclude,

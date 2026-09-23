@@ -86,6 +86,49 @@ function M.parse_url(url)
 	return { scheme = scheme, host = host, port = port }
 end
 
+-- 校验并规范化代理地址：支持 http/https/socks4/socks5/socks5h，可含 user:pass@
+-- 空串 → ""（未使用）；合法 → 规范化地址；非法 → nil, err
+function M.parse_proxy(p)
+	local s = util.trim(p or "")
+	if s == "" then return "" end
+	local scheme, rest = s:match("^(%a[%w]*)://(.*)$")
+	if not scheme then return nil, "代理格式无效" end
+	scheme = scheme:lower()
+	if scheme ~= "http" and scheme ~= "https" and scheme ~= "socks4"
+		and scheme ~= "socks5" and scheme ~= "socks5h" then
+		return nil, "不支持的代理协议: " .. scheme
+	end
+	local userinfo, hostport = "", rest:gsub("/.*$", "")
+	local at = hostport:find("@", 1, true)
+	if at then
+		userinfo = hostport:sub(1, at - 1)
+		hostport = hostport:sub(at + 1)
+	end
+	if userinfo ~= "" and not userinfo:match("^[%w%.%-_:]+$") then
+		return nil, "代理用户名/密码含非法字符"
+	end
+	local host, port
+	if hostport:sub(1, 1) == "[" then
+		host = hostport:match("^%[([%w%.%-%:]+)%]")
+		port = hostport:match("^%[.*%]%:(%d+)$")
+	else
+		local h, prt = hostport:match("^([^:]+):(%d+)$")
+		if h then host, port = h, prt else host = hostport end
+	end
+	if not host or host == "" or not host:match("^[%w%.%-%:]+$") then
+		return nil, "代理主机无效"
+	end
+	if port then
+		port = tonumber(port)
+		if not port or port < 1 or port > 65535 then return nil, "代理端口无效" end
+	end
+	local r = scheme .. "://"
+	if userinfo ~= "" then r = r .. userinfo .. "@" end
+	r = r .. host
+	if port then r = r .. ":" .. port end
+	return r
+end
+
 -- 解析主机 → IP 列表；无法解析时返回 nil
 local function resolve(host)
 	local nixio = util.try_require("nixio")
@@ -165,6 +208,10 @@ end
 
 local function fetch_curl(url, parsed, opts)
 	local max, t = opts.max_size, opts.timeout
+	local proxy_arg = ""
+	if opts.proxy and opts.proxy ~= "" then
+		proxy_arg = string.format(" -x %q", opts.proxy)
+	end
 	local cur = url
 	for redirect = 0, M.MAX_REDIRECTS do
 		local tmp = "/tmp/substore_dl_" .. redirect .. ".tmp"
@@ -172,8 +219,8 @@ local function fetch_curl(url, parsed, opts)
 		local errf = tmp .. ".err"
 		os.remove(tmp); os.remove(hdr); os.remove(errf)
 		local cmd = string.format(
-			"curl -sS -o %q --max-time %d --connect-timeout %d --max-redirs 0 --max-filesize %d -D %q -w \"%%{http_code}\" %q 2>%q",
-			tmp, t, math.min(t, 10), max, hdr, cur, errf)
+			"curl -sS -o %q --max-time %d --connect-timeout %d --max-redirs 0 --max-filesize %d -D %q -w \"%%{http_code}\"%s %q 2>%q",
+			tmp, t, math.min(t, 10), max, hdr, proxy_arg, cur, errf)
 		local p = io.popen(cmd)
 		local code = p and p:read("*a") or ""
 		if p then p:close() end
@@ -210,7 +257,12 @@ local function fetch_wget(url, parsed, opts)
 	local max, t = opts.max_size, opts.timeout
 	local tmp = "/tmp/substore_dl_wget.tmp"
 	os.remove(tmp)
-	local cmd = string.format("wget -q -T %d -O %q %q 2>/dev/null", t, tmp, url)
+	-- 仅 http/https 代理可用环境变量传递（busybox wget 不支持 socks 代理）
+	local proxy_env = ""
+	if opts.proxy and opts.proxy ~= "" and opts.proxy:match("^https?://") then
+		proxy_env = string.format("http_proxy=%q https_proxy=%q ", opts.proxy, opts.proxy)
+	end
+	local cmd = proxy_env .. string.format("wget -q -T %d -O %q %q 2>/dev/null", t, tmp, url)
 	os.execute(cmd)
 	local size = util.file_size(tmp)
 	if size > max then os.remove(tmp); return nil, "响应超过大小限制 (" .. max .. " 字节)" end
@@ -226,18 +278,19 @@ local function fetch(tool, url, parsed, opts)
 	return fetch_wget(url, parsed, opts)
 end
 
--- 下载订阅内容。成功返回字符串；失败返回 nil, err
+-- 下载订阅内容。成功返回 body, headers, nil；失败返回 nil, nil, err
+-- opts.proxy 为可选代理地址（scheme://host:port），应由调用方用 parse_proxy 校验
 function M.download(url, opts)
 	opts = opts or {}
 	local max_size = opts.max_size or M.DEFAULT_MAX_SIZE
 	local timeout = opts.timeout or M.DEFAULT_TIMEOUT
 	local parsed = M.parse_url(url)
-	if not parsed then return nil, "无效 URL" end
+	if not parsed then return nil, nil, "无效 URL" end
 	local ok, reason = M.check_public(parsed.host)
-	if not ok then return nil, reason end
+	if not ok then return nil, nil, reason end
 	local tool = detect_tool()
-	if not tool then return nil, "无可用下载工具 (curl/wget)" end
-	local body, headers = fetch(tool, url, parsed, { max_size = max_size, timeout = timeout })
+	if not tool then return nil, nil, "无可用下载工具 (curl/wget)" end
+	local body, headers = fetch(tool, url, parsed, { max_size = max_size, timeout = timeout, proxy = opts.proxy })
 	if not body then return nil, nil, headers end
 	return body, headers or {}, nil
 end

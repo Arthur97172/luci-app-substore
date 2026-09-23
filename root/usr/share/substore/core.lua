@@ -79,6 +79,8 @@ function M.add(name, url, opts)
 		name = name, url = url, enabled = true,
 		node_count = 0, last_update = nil, error = "", format = "",
 		token = util.rnd_hex(16),
+		proxy_enable = (opts.proxy_enable == true or opts.proxy_enable == "1") and "1" or "0",
+		proxy = util.trim(opts.proxy or ""),
 		cron_enable = (opts.cron_enable == true or opts.cron_enable == "1") and cron_time ~= "",
 		cron_time = cron_time,
 		rules_enable = (opts.rules_enable == true or opts.rules_enable == "1") and true or false,
@@ -197,7 +199,19 @@ function M.sync(id)
 	if not meta then log("Sync fail: subscription not found"); return nil, "订阅不存在" end
 	if not meta.url or meta.url == "" then log("Sync fail: no URL"); return nil, "无订阅 URL" end
 
-	local content, headers, err = http.download(meta.url, { max_size = M.MAX_SIZE, timeout = M.TIMEOUT })
+	-- 订阅代理：开启且代理地址有效时，通过代理下载订阅
+	local proxy = ""
+	if meta.proxy_enable == true or meta.proxy_enable == "1" then
+		local p, perr = http.parse_proxy(meta.proxy or "")
+		if p and p ~= "" then
+			proxy = p
+		elseif perr then
+			log("Proxy ignored: " .. tostring(perr))
+		end
+	end
+	if proxy ~= "" then log("Using proxy " .. proxy) end
+
+	local content, headers, err = http.download(meta.url, { max_size = M.MAX_SIZE, timeout = M.TIMEOUT, proxy = proxy })
 	if not content then
 		log("Download fail: " .. tostring(err))
 		M.save_meta(id, { error = err, last_update = os.time() })

@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 编辑订阅页新增「订阅代理」：开启后通过代理地址下载订阅（解决国内直连失败）
+  - http.lua：新增 parse_proxy（http/https/socks4/socks5/socks5h，含 user:pass@，防注入）；download/curl/wget 支持代理
+  - core.lua：订阅元数据新增 proxy_enable/proxy；sync() 开启且地址有效时经代理下载
+  - controller：create/save 读取并持久化 proxy_enable/proxy
+  - view/form.htm：订阅 URL 下方新增「订阅代理」复选框，开启时显示「代理地址」输入框（默认关闭）
+  - tests/http_proxy_test.lua 新增
 - 编辑订阅页展示剩余流量 / 剩余时长（仅编辑页，首页不显示）
   - http.lua：下载时捕获响应头，download() 返回值改为 body, headers, err；新增 read_headers
   - core.lua：新增 parse_userinfo；sync() 解析 subscription-userinfo 头并持久化 upload/download/total/expire
