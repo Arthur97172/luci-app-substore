@@ -7,7 +7,7 @@
 	local ctx = luci.dispatcher.context or {}
 	local q = ctx.query or {}
 	local id = http.formvalue("id") or q.id or ""
-	local fmt = http.formvalue("fmt") or q.fmt or "clash"
+	local fmt = http.formvalue("fmt") or q.fmt or "clashmeta"
 	local items = core.list()
 	local meta = id ~= "" and core.get(id) or nil
 	local nodes = {}
@@ -33,9 +33,19 @@
 	<div style="display:flex;gap:0.5em;align-items:center;margin:0.5em 0">
 		<label><%:Format%>:
 			<select name="fmt">
-				<option value="clash" <%=fmt=="clash" and "selected" or ""%>>Clash YAML</option>
-				<option value="json" <%=fmt=="json" and "selected" or ""%>>JSON</option>
-				<option value="base64" <%=fmt=="base64" and "selected" or ""%>>Base64</option>
+				<option value="clashmeta" <%=fmt=="clashmeta" and "selected" or ""%>>Clash.Meta / Mihomo</option>
+				<option value="stash" <%=fmt=="stash" and "selected" or ""%>>Stash</option>
+				<option value="surge" <%=fmt=="surge" and "selected" or ""%>>Surge</option>
+				<option value="surfboard" <%=fmt=="surfboard" and "selected" or ""%>>Surfboard</option>
+				<option value="surgemac" <%=fmt=="surgemac" and "selected" or ""%>>SurgeMac</option>
+				<option value="loon" <%=fmt=="loon" and "selected" or ""%>>Loon</option>
+				<option value="egern" <%=fmt=="egern" and "selected" or ""%>>Egern</option>
+				<option value="qx" <%=fmt=="qx" and "selected" or ""%>>Quantumult X</option>
+				<option value="shadowrocket" <%=fmt=="shadowrocket" and "selected" or ""%>>Shadowrocket</option>
+				<option value="singbox" <%=fmt=="singbox" and "selected" or ""%>>sing-box</option>
+				<option value="v2ray" <%=fmt=="v2ray" and "selected" or ""%>>V2Ray</option>
+				<option value="v2rayuri" <%=fmt=="v2rayuri" and "selected" or ""%>>V2Ray URI</option>
+				<option value="plain" <%=fmt=="plain" and "selected" or ""%>>Plain JSON</option>
 			</select>
 		</label>
 		<input type="submit" class="cbi-button cbi-button-apply" value="<%:Generate%>"/>

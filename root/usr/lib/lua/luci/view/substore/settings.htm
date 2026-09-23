@@ -54,9 +54,9 @@
 			<input type="checkbox" name="dedup" value="1" <%=r.dedup=="1" and "checked" or ""%>/>
 		</div>
 		<div class="cbi-value">
-			<label>重命名映射</label>
-			<textarea name="rename_map" rows="4" cols="60"><%=r.rename_map or ''%></textarea>
-			<div class="cbi-value-description">每行格式：旧名称=新名称</div>
+			<label>重命名规则</label>
+			<textarea name="rename_map" rows="5" cols="60"><%=r.rename_map or ''%></textarea>
+			<div class="cbi-value-description">每行一条：旧名称=新名称（精确）；pattern -&gt; replacement（正则）；{server}_{port}_{proto}（模板）</div>
 		</div>
 	</div>
 	<div class="cbi-page-actions">

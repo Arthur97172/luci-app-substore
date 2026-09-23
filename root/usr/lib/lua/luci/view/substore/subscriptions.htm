@@ -14,12 +14,20 @@
 		<th><%:Nodes%></th>
 		<th><%:Updated%></th>
 		<th><%:Status%></th>
+		<th><%:Subscription link%></th>
 		<th><%:Actions%></th>
 	</tr>
 
 <%
 	local core = require("substore.core")
+	local http_env = require("luci.http")
 	local items = core.list()
+	local base = luci.dispatcher.build_url("substore", "download")
+	local scheme = (http_env.getenv("HTTPS") and http_env.getenv("HTTPS") ~= "off") and "https" or "http"
+	local host = http_env.getenv("HTTP_HOST")
+		or (http_env.getenv("SERVER_NAME") and http_env.getenv("SERVER_NAME") .. ":" .. (http_env.getenv("SERVER_PORT") or "80"))
+		or "127.0.0.1"
+	local prefix = scheme .. "://" .. host .. base
 	for _, it in ipairs(items) do
 		local status_color = "#808080"
 		local status_text = luci.i18n.translate("Pending")
@@ -30,6 +38,8 @@
 			status_color = "#006600"
 			status_text = luci.i18n.translate("OK")
 		end
+		local sub_token = core.ensure_token(it.id)
+		local sublink = prefix .. "?token=" .. sub_token .. "&target=ClashMeta"
 %>
 	<tr class="cbi-section-table-row">
 		<td><%=it.name%></td>
@@ -37,6 +47,14 @@
 		<td><%=it.node_count or 0%></td>
 		<td><%=it.last_update and os.date("%Y-%m-%d %H:%M", it.last_update) or "-"%></td>
 		<td style="color:<%=status_color%>"><%=status_text%></td>
+		<td>
+			<div style="display:flex;gap:0.25em;align-items:center">
+				<input id="link_<%=it.id%>" type="text" readonly style="width:280px" value="<%=luci.util.pcdata(sublink)%>"/>
+				<button type="button" class="cbi-button cbi-button-apply"
+					onclick="var e=document.getElementById('link_<%=it.id%>');e.select();document.execCommand('copy');"><%:Copy%></button>
+			</div>
+			<div class="cbi-value-description"><%:格式可用 &target= 切换，如 ClashMeta / sing-box / Surge / V2Ray / Shadowrocket 等%></div>
+		</td>
 		<td>
 			<form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/update')%>" style="display:inline">
 				<input type="hidden" name="token" value="<%=token%>"/>
@@ -59,7 +77,7 @@
 	if #items == 0 then
 %>
 	<tr class="cbi-section-table-row">
-		<td colspan="6" style="text-align:center;color:#808080"><%:No subscriptions yet.%></td>
+		<td colspan="7" style="text-align:center;color:#808080"><%:No subscriptions yet.%></td>
 	</tr>
 <%
 	end

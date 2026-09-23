@@ -3,6 +3,10 @@
 
 local util = require("substore.util")
 local node = require("substore.node")
+local parser_yaml = require("substore.parser_yaml")
+local parser_clash_yaml = require("substore.parser_clash_yaml")
+local parser_json_config = require("substore.parser_json_config")
+local parser_surge = require("substore.parser_surge")
 
 local M = {}
 
@@ -16,20 +20,35 @@ local function split_lines(content)
 	return out
 end
 
--- 检测订阅格式：uri / base64 / json / empty / unknown
+-- 检测订阅格式：uri / base64 / json / yaml / empty / unknown
 function M.detect(content)
 	content = util.trim(content or "")
 	if content == "" then return "empty" end
 	local stripped = content:gsub("%s+", "")
 	if stripped:sub(1, 1) == "{" then return "json" end
+	-- YAML 检测：包含 proxies: 或 outbounds: 键
+	if content:match("^[%s]*proxies:") or content:match("^[%s]*outbounds:") then
+		return "yaml"
+	end
+	-- 检查内容中是否包含 proxies: 或 outbounds: 行
+	for line in content:gmatch("[^\r\n]+") do
+		if line:match("^%s*proxies:%s*$") or line:match("^%s*outbounds:%s*$") then
+			return "yaml"
+		end
+	end
 	if stripped:find("vmess://", 1, true) or stripped:find("vless://", 1, true)
 		or stripped:find("trojan://", 1, true) or stripped:find("ss://", 1, true)
 		or content:find("://", 1, true) then
 		return "uri"
 	end
-	if stripped:match("^[A-Za-z0-9%+/]+=*$") and #stripped > 10 then
-		return "base64"
+	if stripped:match("^[A-Za-z0-9+/]*=*$") and #stripped > 10 then
+		-- 更严格：需含 = / + 之一，或长度为 4 的整数倍（避免把纯字母数字文本误判为 base64）
+		if stripped:find("=", 1, true) or stripped:find("/", 1, true)
+			or stripped:find("+", 1, true) or #stripped % 4 == 0 then
+			return "base64"
+		end
 	end
+	if parser_surge.is_config(content) then return "surge" end
 	return "unknown"
 end
 
@@ -221,6 +240,20 @@ end
 local function parse_json_content(content)
 	local data = util.json_decode(content)
 	if type(data) ~= "table" then return nil, "JSON 解析失败" end
+
+	-- 客户端配置文件分发：sing-box / V2Ray / Clash JSON
+	if type(data.outbounds) == "table" then
+		local first = data.outbounds[1]
+		if type(first) == "table" and first.protocol then
+			return parser_json_config.parse_v2ray_json(content), nil
+		end
+		return parser_json_config.parse_singbox_json(content), nil
+	end
+	if type(data.proxies) == "table" then
+		return parser_json_config.parse_clash_json(content), nil
+	end
+
+	-- 通用节点数组 / 单节点对象
 	local list
 	if data[1] then list = data else list = { data } end
 	local nodes = {}
@@ -236,7 +269,212 @@ local function parse_json_content(content)
 			})
 		end
 	end
-	return nodes
+	return nodes, nil
+end
+
+-- 简易 YAML 解析器：处理 Clash YAML proxies 格式
+-- 支持基本键值对和列表项，不处理复杂嵌套
+local function parse_yaml_content(content)
+	local raw_nodes = {}
+	local lines = split_lines(content)
+	local current_node = nil
+	local in_proxies = false
+	local proxies_indent = 0
+
+	for i, line in ipairs(lines) do
+		local trimmed = util.trim(line)
+		if trimmed == "" or trimmed:sub(1, 1) == "#" then
+			-- 跳过空行和注释
+		elseif trimmed:match("^proxies:%s*$") or trimmed:match("^outbounds:%s*$") then
+			in_proxies = true
+			proxies_indent = line:match("^%s*") and #line:match("^%s*") or 0
+			current_node = nil
+		elseif in_proxies then
+			-- 检测列表项开始：- name: xxx 或单独的 -
+			local list_match = line:match("^%s*%-%s*(.*)$")
+			if list_match then
+				-- 保存上一个节点
+				if current_node then
+					raw_nodes[#raw_nodes + 1] = current_node
+				end
+				current_node = {}
+				-- 检查列表项同一行是否有字段
+				if list_match:match("^([^:]+):%s*(.+)$") then
+					local k, v = list_match:match("^([^:]+):%s*(.+)$")
+					current_node[k] = util.trim(v)
+				end
+			else
+				-- 解析缩进的字段
+				local indent = line:match("^%s*") and #line:match("^%s*") or 0
+				if current_node and indent > proxies_indent then
+					local k, v = trimmed:match("^([^:]+):%s*(.+)$")
+					if k then
+						k = util.trim(k)
+						v = util.trim(v)
+						-- 去掉引号
+						v = v:gsub('^["\'](.*)["\']$', '%1')
+						current_node[k] = v
+					end
+				else
+					-- 遇到缩进减少，结束当前节点
+					if current_node then
+						raw_nodes[#raw_nodes + 1] = current_node
+						current_node = nil
+					end
+					in_proxies = false
+				end
+			end
+		end
+	end
+
+	-- 保存最后一个节点
+	if current_node then
+		raw_nodes[#raw_nodes + 1] = current_node
+	end
+
+	-- 协议映射：Clash type -> proto
+	local proto_map = {
+		vmess = "vmess",
+		vless = "vless",
+		trojan = "trojan",
+		ss = "shadowsocks",
+		ssr = "ssr",
+		http = "http",
+		socks5 = "socks5",
+	}
+
+	-- 转换字段名并归一化
+	local result = {}
+	for _, n in ipairs(raw_nodes) do
+		if not n or not n.server or not n.port then
+			-- 跳过无效节点
+		else
+			local proto = proto_map[n.type or n.proto] or "vmess"
+			local node_data = {
+				proto = proto,
+				name = n.name or n.Name or (n.server .. ":" .. tostring(n.port or "")),
+				server = n.server,
+				port = tonumber(n.port),
+				uuid = n.uuid or n.id,
+				password = n.password,
+				method = n.cipher or n.method,
+				net = n.network or n.net,
+				security = n.tls or n.security,
+				sni = n.sni or n.servername,
+				alterId = tonumber(n.alterId),
+			}
+			result[#result + 1] = node.normalize(node_data)
+		end
+	end
+
+	return result
+end
+
+function M.parse_yaml(content)
+	-- 优先使用完整 Clash YAML 解析器；失败/为空则回退简易解析
+	local nodes = parser_clash_yaml.parse(content)
+	if nodes and #nodes > 0 then return nodes end
+	return parse_yaml_content(content)
+end
+
+-- ---------- 局域网订阅链接 ----------
+
+-- 判断主机是否为内网 / 回环 / 链路本地地址（SSRF 防护）
+local function is_private_host(host)
+	if not host then return false end
+	host = host:lower()
+	if host == "localhost" or host == "::" then return true end
+	-- IPv6：去掉方括号
+	local v6 = host:match("^%[([^%]]+)%]$")
+	if v6 then host = v6 end
+	if host:find(":", 1, true) then
+		local h = host:gsub("^0*", "")
+		if h == "" or h == "1" then return true end -- :: 或 ::1
+		return host:match("^::") ~= nil
+			or host:match("^f[cd]") ~= nil
+			or host:match("^fe[89ab]") ~= nil
+	end
+	local a, b, c, d = host:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+	if not a then return false end
+	a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
+	if a == 0 or a == 127 or a == 10 then return true end
+	if a == 100 and b >= 64 and b <= 127 then return true end -- CGNAT 100.64/10
+	if a == 192 and b == 168 then return true end
+	if a == 172 and b >= 16 and b <= 31 then return true end
+	if a == 169 and b == 254 then return true end
+	return false
+end
+
+-- 检测是否为局域网订阅链接（http/https + 内网主机）
+function M.detect_local_link(url)
+	url = util.trim(url or "")
+	local scheme, rest = url:match("^(%a+)://(.*)$")
+	if not scheme then return nil end
+	scheme = scheme:lower()
+	if scheme ~= "http" and scheme ~= "https" then return nil end
+	local authority = rest:match("^([^/]*)") or ""
+	if authority == "" then return nil end
+	-- 去除 userinfo@
+	if authority:find("@", 1, true) then
+		authority = authority:match("^.*@(.*)$") or ""
+	end
+	local host
+	if authority:sub(1, 1) == "[" then
+		host = authority:match("^(%[.-%])")
+	else
+		host = authority:match("^([^:]+)")
+	end
+	if is_private_host(host) then return true end
+	return nil
+end
+
+-- 解析局域网订阅链接，返回 { scheme, host, port, path, target, name, user }（host/port/path 为字符串；缺失为 nil）
+function M.parse_local_link(url)
+	url = util.trim(url or "")
+	local scheme, rest = url:match("^(%a+)://(.*)$")
+	if not scheme then return nil end
+	scheme = scheme:lower()
+
+	local authority, remainder = rest:match("^([^/]*)(.*)$")
+	if authority == nil then authority, remainder = rest, "" end
+
+	-- 提取 host 与 port
+	local host, port
+	if authority:sub(1, 1) == "[" then
+		host = authority:match("^%[([^%]]+)%]")
+		port = authority:match("^%[[^%]]+%]:(%d+)")
+	else
+		host = authority:match("^([^:]+)")
+		port = authority:match("^[^:]+:(%d+)")
+	end
+
+	-- 拆分 path 与 query
+	local path, query = remainder:match("^([^?]*)(.*)$")
+	if path == nil then path, query = remainder, "" end
+
+	local params = {}
+	if query and query ~= "" then
+		for k, v in query:sub(2):gmatch("([^&=]+)=([^&]*)") do
+			params[k] = util.url_decode(v)
+		end
+	end
+
+	-- name：优先 ?name=；否则取路径最后一段
+	local name = params.name
+	if not name or name == "" then
+		name = path and path:match("/([^/]+)$")
+	end
+
+	-- user：优先 ?uid= / ?user=；否则取 /<user>/download/ 路径中的用户名
+	local user = params.uid or params.user
+	if not user or user == "" then
+		user = path and path:match("/([^/]+)/download/")
+	end
+
+	return {
+		scheme = scheme, host = host, port = port, path = path,
+		target = params.target, name = name, user = user,
+	}
 end
 
 -- 解析订阅内容，返回 { nodes = {...}, format = "..." } 或 nil, err
@@ -253,6 +491,12 @@ function M.parse(content)
 		local nodes, err = parse_json_content(content)
 		if not nodes then return nil, err end
 		return { nodes = nodes, format = "json" }
+	elseif format == "yaml" then
+		local nodes = M.parse_yaml(content)
+		return { nodes = nodes, format = "yaml" }
+	elseif format == "surge" then
+		local nodes = parser_surge.parse(content)
+		return { nodes = nodes, format = "surge" }
 	end
 	return nil, "无法识别的订阅格式"
 end

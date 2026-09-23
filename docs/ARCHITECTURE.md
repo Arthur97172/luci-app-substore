@@ -10,7 +10,8 @@ OpenWrt / ImmortalWrt 原生 LuCI 机场订阅管理工具。参考 Sub-Store �
 - 订阅管理：多订阅源增删改查、手动/定时更新、更新时间/节点数/状态展示
 - 节点管理：解析常见代理协议、查看/搜索/筛选/排序/重命名/去重
 - 订阅处理：按条件筛选、去重、重命名、排序、多订阅合并、生成客户端订阅
-- 输出格式：Mihomo/Clash YAML、Base64/URI 订阅、JSON
+- 输出格式：13 种全量实现（Plain JSON / Stash / Clash.Meta / Surfboard / Surge / SurgeMac / Loon / Egern / Shadowrocket / QX / sing-box / V2Ray / V2Ray URI）
+- 订阅链接：转换结果以订阅链接形式下发，供 Passwall / OpenClash 等拉取
 - LuCI 界面：订阅列表、编辑更新、节点查看、规则配置、输出复制、状态日志
 
 ## 2. 技术选型
@@ -38,12 +39,19 @@ luci-app-substore/
 ```
 
 核心库（`/usr/share/substore/`，纯 Lua，不依赖 luci.*）：
-- `core.lua` — 订阅源元数据读写、状态管理
+- `core.lua` — 订阅源元数据读写、状态管理、订阅链接生成（token + generate_link）
 - `parser.lua` — 订阅格式解析（Base64/URI/Clash YAML/JSON）
 - `node.lua` — 节点模型、筛选、去重、重命名、排序
-- `output.lua` — 目标格式生成（Clash YAML / Base64 / JSON）
+- `node_converter.lua` — 协议间字段映射与协议转换
+- `converter.lua` — 通用转换器（字段映射、URL 模板渲染）
+- `output.lua` — 统一格式分发（FORMAT_ALIASES 别名映射、content-type/扩展名）
+- `output_clash_meta.lua` — Clash.Meta / Mihomo / Stash YAML
+- `output_uri.lua` — 分享链接 URI / Shadowrocket / V2Ray URI
+- `output_singbox.lua` — sing-box JSON
+- `output_v2ray.lua` — V2Ray/Xray JSON
+- `output_formats.lua` — Surge 系 / Loon / QX / Egern / Plain JSON
 - `http.lua` — 订阅下载（SSRF 防护、超时、大小限制）
-- `util.lua` — 通用工具（原子写、时间、日志）
+- `util.lua` — 通用工具（原子写、时间、日志、Base64、JSON）
 
 LuCI 前端（`/usr/lib/lua/luci/`）：
 - `controller/admin/substore.lua` — 路由注册
@@ -52,7 +60,11 @@ LuCI 前端（`/usr/lib/lua/luci/`）：
 
 ## 4. 数据流
 
-订阅 URL / 本地文本 → `http.lua` 下载（SSRF 防护）→ `parser.lua` 解析 → `node.lua` 统一节点模型 → 去重/筛选/重命名/排序 → `output.lua` 按目标格式生成 → LuCI 界面 / 输出接口
+订阅 URL / 本地文本 → `http.lua` 下载（SSRF 防护）→ `parser.lua` 解析 → `node.lua` 统一节点模型 → 去重/筛选/重命名/排序 → `output.lua` 按目标格式生成 → LuCI 界面 / 订阅下载端点
+
+**订阅链接下发流程**：每个订阅在创建时生成随机 16 位十六进制 `token`，存入元数据。客户端请求公开端点
+`GET /substore/download?token=<token>&target=<format>`（如 `target=ClashMeta`），无需登录态、靠不可猜测的 token 鉴权，
+按 `target` 实时转换节点并返回（`node_converter.lua` 负责协议间转换，`output.*` 负责格式生成）。
 
 节点统一内部模型（协议无关）：
 ```lua
@@ -80,7 +92,7 @@ LuCI 前端（`/usr/lib/lua/luci/`）：
 
 - 目标 LuCI 使用 Lua 兼容模式，需依赖 `luci-lua-runtime` + `luci-compat`（23.05+）
 - Lua 控制器沿用 `module()` + `entry()` 风格（24.10 有效，活跃插件仍在使用）
-- **25.12 风险**：LuCI 模板优先级已转向 `.ut`（ucode），`.htm` 为 Legacy。阶段0先以 `.htm` 建立骨架，**阶段4 迁移到 `.ut`** 确保 25.12 兼容
+- **25.12 风险**：LuCI 模板优先级已转向 `.ut`（ucode），`.htm` 为 Legacy。阶段4 已评估迁移方案，详见 `docs/UCODE_MIGRATION.md`（含 `.htm`→`.ut` 语法对照与逐模板映射；核心库纯 Lua 可通过 `include()` 复用，迁移成本集中在 5 个模板的胶水代码）
 - 不假设所有 OpenWrt 版本依赖一致，分版本适配
 - 纯 Lua 核心库优先用 Lua 5.1 标准库（luci 自带 lua5.1），避免 luarocks 依赖
 - 如需要 YAML 解析：优先评估纯 Lua 实现或 luci 内置，避免重运行时

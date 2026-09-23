@@ -74,9 +74,53 @@ function M.add(name, url)
 	items[id] = {
 		name = name, url = url, enabled = true,
 		node_count = 0, last_update = nil, error = "", format = "",
+		token = util.rnd_hex(16),
 	}
 	if not save(seq, items) then return nil, "写入失败" end
 	return id
+end
+
+-- 获取订阅的下载 token；若不存在则生成并持久化
+function M.ensure_token(id)
+	if not id_is_valid(id) then return nil end
+	local seq, items = load()
+	local meta = items[id]
+	if not meta then return nil end
+	if not meta.token or meta.token == "" then
+		meta.token = util.rnd_hex(16)
+		save(seq, items)
+	end
+	return meta.token
+end
+
+-- 依据 token 查找订阅 ID
+local function id_by_token(token)
+	if type(token) ~= "string" or token == "" then return nil end
+	local _, items = load()
+	for id, meta in pairs(items) do
+		if meta.token == token then return id end
+	end
+	return nil
+end
+
+-- 生成订阅下载内容：按 target 格式转换节点。返回 content, content_type, filename, err
+function M.generate_link(token, target, opts)
+	opts = opts or {}
+	local id = id_by_token(token)
+	if not id then return nil, nil, nil, "无效的订阅 token" end
+	local meta = M.get(id)
+	local nodes = M.read_nodes(id)
+	if #nodes == 0 then return nil, nil, nil, "暂无可用的节点（请先更新订阅）" end
+
+	local output = require("substore.output")
+	local content, err = output.generate(nodes, target, opts)
+	if not content then return nil, nil, nil, err or "无法生成目标格式" end
+
+	local ct = opts.content_type or output.content_type_for(target) or "text/plain; charset=utf-8"
+	local ext = output.extension_for(target) or "txt"
+	local base = (meta and meta.name and meta.name ~= "") and meta.name or id
+	local filename = base .. "." .. ext
+	return content, ct, filename, nil
 end
 
 function M.save_meta(id, patch)

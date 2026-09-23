@@ -19,6 +19,8 @@ function index()
 	entry({"admin", "services", "substore", "save"}, call("action_save"), nil)
 	entry({"admin", "services", "substore", "delete"}, call("action_delete"), nil)
 	entry({"admin", "services", "substore", "update"}, call("action_update"), nil)
+	-- 公开订阅下载端点（无登录态，靠随机 token 访问控制），供 Passwall/OpenClash 等客户端拉取
+	entry({"substore", "download"}, call("action_download"), nil)
 end
 
 local function post_ok()
@@ -67,9 +69,40 @@ function action_update()
 	local http = require("luci.http")
 	local core = require("substore.core")
 	if post_ok() then
-		core.sync(http.formvalue("id") or "")
+		local id = http.formvalue("id") or ""
+		-- pcall 兜底：解析/写入异常不会让 LuCI 页面 500，错误落库后在列表页状态列展示
+		local ok, err = pcall(function()
+			return core.sync(id)
+		end)
+		if not ok then
+			core.save_meta(id, { error = tostring(err), last_update = os.time() })
+		end
 	end
 	back_to_list()
+end
+
+-- 公开下载端点：GET /substore/download?token=<token>&target=<format>
+function action_download()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	local util = require("substore.util")
+	local token = util.trim(http.formvalue("token") or "")
+	local target = util.trim(http.formvalue("target") or "ClashMeta")
+
+	local content, ct, filename, err = core.generate_link(token, target)
+	if not content then
+		http.status(404, "Not Found")
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write(err or "not found")
+		return
+	end
+
+	http.prepare_content(ct)
+	-- 文件名白名单：剥离引号/换行/控制字符，防 HTTP 头注入
+	local safe_name = (filename or "subscription.txt"):gsub("[^%w%-%._]", "_")
+	http.header("Content-Disposition",
+		"attachment; filename=\"" .. safe_name .. "\"")
+	http.write(content)
 end
 
 function action_settings_save()

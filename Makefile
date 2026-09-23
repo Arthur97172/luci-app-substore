@@ -54,12 +54,7 @@ define Package/luci-app-substore/install
 	$(INSTALL_BIN) ./root/usr/bin/substore-cron.sh $(1)/usr/bin/substore-cron.sh
 
 	$(INSTALL_DIR) $(1)/usr/lib/lua/substore
-	$(INSTALL_DATA) ./root/usr/share/substore/core.lua $(1)/usr/lib/lua/substore/core.lua
-	$(INSTALL_DATA) ./root/usr/share/substore/util.lua $(1)/usr/lib/lua/substore/util.lua
-	$(INSTALL_DATA) ./root/usr/share/substore/node.lua $(1)/usr/lib/lua/substore/node.lua
-	$(INSTALL_DATA) ./root/usr/share/substore/parser.lua $(1)/usr/lib/lua/substore/parser.lua
-	$(INSTALL_DATA) ./root/usr/share/substore/http.lua $(1)/usr/lib/lua/substore/http.lua
-	$(INSTALL_DATA) ./root/usr/share/substore/output.lua $(1)/usr/lib/lua/substore/output.lua
+	$(INSTALL_DATA) ./root/usr/share/substore/*.lua $(1)/usr/lib/lua/substore/
 
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/controller/admin
 	$(INSTALL_DATA) ./root/usr/lib/lua/luci/controller/admin/substore.lua $(1)/usr/lib/lua/luci/controller/admin/substore.lua

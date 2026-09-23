@@ -7,10 +7,12 @@ Native OpenWrt / ImmortalWrt LuCI application for managing airport subscriptions
 ## Features
 
 - Subscription management: add / edit / delete / update multiple subscription sources
-- Node parsing for common proxy protocols
-- Node filtering, deduplication, renaming, sorting
-- Multi-subscription merge
-- Output formats: Mihomo/Clash YAML, Base64/URI, JSON
+- Input sources: URI / Base64 / JSON subscriptions, Clash YAML, sing-box JSON, V2Ray JSON, Surge / Loon / QX client configs, LAN subscription links
+- Node parsing for common proxy protocols (vmess / vless / trojan / shadowsocks / hysteria2 / tuic / socks …)
+- Node filtering, deduplication, renaming (regex / template), grouping, tags
+- Protocol conversion: any node type → any other type
+- Output formats (13, all implemented): Plain JSON, Stash, Clash.Meta/Mihomo, Surfboard, Surge, SurgeMac, Loon, Egern, Shadowrocket, Quantumult X, sing-box, V2Ray, V2Ray URI
+- Subscription links: converted nodes served as links (e.g. `/substore/download?token=<token>&target=ClashMeta`) usable by Passwall / OpenClash
 - LuCI web interface with status and logs
 
 > Status: under active development. See [docs/PLAN.md](docs/PLAN.md) for the staged roadmap.

@@ -57,6 +57,19 @@ function M.base64_decode(s)
 	return table.concat(out)
 end
 
+-- 生成随机十六进制 token（用于下载链接访问控制）
+function M.rnd_hex(len)
+	len = len or 16
+	local hex = "0123456789abcdef"
+	local out = {}
+	math.randomseed(os.time() + (os.clock() * 1000000 % 1000000) + math.random(0, 65535))
+	for _ = 1, len do
+		local idx = math.random(1, 16)
+		out[#out + 1] = hex:sub(idx, idx)
+	end
+	return table.concat(out)
+end
+
 -- ---------- URL ----------
 function M.url_decode(s)
 	if type(s) ~= "string" then return "" end
@@ -78,6 +91,9 @@ end
 function M.split_hostport(s)
 	if type(s) ~= "string" then return nil, nil end
 	s = M.trim(s)
+	-- 去掉可能尾随的路径（如 "host:port/path"）
+	s = s:match("^([^/]*)") or s
+	if s == "" then return nil, nil end
 	if s:sub(1, 1) == "[" then
 		local close = s:find("]", 1, true)
 		if not close then return nil, nil end
@@ -115,6 +131,9 @@ local function is_array(t)
 	end
 	return i == #t
 end
+
+-- JSON null 占位符：仅在数组中用于保留位置（对象中的 null 仍解码为 nil）
+local JSON_NULL = {}
 
 function M.json_encode(v)
 	local function enc(v)
@@ -205,6 +224,7 @@ function M.json_decode(s)
 			if s:sub(i, i) == "]" then i = i + 1 return arr end
 			while true do
 				local val = parse()
+				if val == nil then val = JSON_NULL end
 				arr[#arr + 1] = val
 				skip_ws()
 				local cc = s:sub(i, i)

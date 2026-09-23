@@ -17,7 +17,7 @@
 
 ## 凭据保护
 - 订阅 URL 中的 token 不写入普通日志
-- 输出接口可加随机 Token 鉴权（后续阶段）
+- 输出/下载接口使用**每订阅随机 16 位十六进制 token** 鉴权（`core.ensure_token`），不可猜测；`/substore/download` 无登录态
 - 日志使用 `logger -t luci-app-substore`，不记录敏感信息
 
 ## 安全测试

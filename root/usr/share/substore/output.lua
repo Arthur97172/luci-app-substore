@@ -1,8 +1,13 @@
--- output.lua — 订阅输出生成（Clash YAML / Base64 / JSON）
+-- output.lua — 订阅输出统一分发（所有 13 种目标格式）
 -- luci-app-substore
 
 local util = require("substore.util")
 local node = require("substore.node")
+local clash_meta = require("substore.output_clash_meta")
+local output_uri = require("substore.output_uri")
+local output_singbox = require("substore.output_singbox")
+local output_v2ray = require("substore.output_v2ray")
+local output_formats = require("substore.output_formats")
 
 local M = {}
 
@@ -49,19 +54,108 @@ function M.to_base64(nodes)
 	return util.base64_encode(yaml)
 end
 
-function M.generate(nodes, format)
-	format = (format or "clash")
+-- 目标格式别名映射（兼容 ?target=X 的各类写法）
+M.FORMAT_ALIASES = {
+	clash       = "clashmeta",
+	yaml        = "clashmeta",
+	clashmeta   = "clashmeta",
+	mihomo      = "clashmeta",
+	stash       = "stash",
+	surge       = "surge",
+	surfboard   = "surfboard",
+	surgemac    = "surgemac",
+	loon        = "loon",
+	egern       = "egern",
+	shadowrocket = "shadowrocket",
+	rocket      = "shadowrocket",
+	qx          = "qx",
+	quantumult  = "qx",
+	singbox     = "singbox",
+	sing_box    = "singbox",
+	["sing-box"] = "singbox",
+	v2ray       = "v2ray",
+	v2rayuri    = "v2rayuri",
+	v2ray_uri   = "v2rayuri",
+	uri         = "v2rayuri",
+	plain       = "plain",
+	plainjson   = "plain",
+	json        = "plain",
+	base64      = "shadowrocket",
+}
+
+-- 目标格式的 HTTP Content-Type
+local CONTENT_TYPES = {
+	clashmeta = "text/plain; charset=utf-8",
+	stash = "text/plain; charset=utf-8",
+	surge = "text/plain; charset=utf-8",
+	surfboard = "text/plain; charset=utf-8",
+	surgemac = "text/plain; charset=utf-8",
+	loon = "text/plain; charset=utf-8",
+	egern = "text/plain; charset=utf-8",
+	qx = "text/plain; charset=utf-8",
+	shadowrocket = "text/plain; charset=utf-8",
+	singbox = "application/json; charset=utf-8",
+	v2ray = "application/json; charset=utf-8",
+	v2rayuri = "text/plain; charset=utf-8",
+	plain = "application/json; charset=utf-8",
+}
+
+function M.content_type_for(format)
+	format = (format or "clash") or "clash"
 	if type(format) ~= "string" then format = "clash" end
-	format = format:lower()
-	if format == "clash" or format == "yaml" then
-		return M.to_clash_yaml(nodes)
-	elseif format == "json" then
-		return M.to_json(nodes)
-	elseif format == "base64" then
-		return M.to_base64(nodes)
-	else
-		return nil, "unsupported format"
-	end
+	local norm = M.FORMAT_ALIASES[format:lower():gsub("[-_%s]", "")]
+	if not norm then norm = M.FORMAT_ALIASES[format:lower()] end
+	return CONTENT_TYPES[norm]
+end
+
+-- 目标格式的下载文件名后缀
+local FILENAME_EXT = {
+	clashmeta = "yaml",
+	stash = "yaml",
+	surge = "conf",
+	surfboard = "conf",
+	surgemac = "conf",
+	loon = "conf",
+	egern = "conf",
+	qx = "conf",
+	shadowrocket = "txt",
+	singbox = "json",
+	v2ray = "json",
+	v2rayuri = "txt",
+	plain = "json",
+}
+
+function M.extension_for(format)
+	format = (format or "clash") or "clash"
+	if type(format) ~= "string" then format = "clash" end
+	local norm = M.FORMAT_ALIASES[format:lower():gsub("[-_%s]", "")]
+	if not norm then norm = M.FORMAT_ALIASES[format:lower()] end
+	return FILENAME_EXT[norm] or "txt"
+end
+
+-- 统一分发：nodes → 目标格式字符串
+function M.generate(nodes, format, options)
+	format = (format or "clash") or "clash"
+	if type(format) ~= "string" then format = "clash" end
+	local norm = M.FORMAT_ALIASES[format:lower():gsub("[-_%s]", "")]
+	if not norm then norm = M.FORMAT_ALIASES[format:lower()] end
+	if not norm then return nil, "unsupported format: " .. tostring(format) end
+
+	if norm == "clashmeta" then return clash_meta.generate(nodes, options) end
+	if norm == "stash" then return output_formats.to_stash(nodes, options) end
+	if norm == "surge" then return output_formats.to_surge(nodes, options) end
+	if norm == "surfboard" then return output_formats.to_surfboard(nodes, options) end
+	if norm == "surgemac" then return output_formats.to_surgemac(nodes, options) end
+	if norm == "loon" then return output_formats.to_loon(nodes, options) end
+	if norm == "egern" then return output_formats.to_egern(nodes, options) end
+	if norm == "shadowrocket" then return output_uri.to_shadowrocket(nodes) end
+	if norm == "qx" then return output_formats.to_qx(nodes, options) end
+	if norm == "singbox" then return output_singbox.generate(nodes) end
+	if norm == "v2ray" then return output_v2ray.generate(nodes) end
+	if norm == "v2rayuri" then return output_uri.to_v2ray_uri(nodes) end
+	if norm == "plain" then return output_formats.to_plain(nodes) end
+
+	return nil, "unsupported format: " .. tostring(format)
 end
 
 return M
