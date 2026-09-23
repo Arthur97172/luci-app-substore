@@ -24,13 +24,13 @@ Native OpenWrt / ImmortalWrt LuCI application for managing airport subscriptions
 opkg (OpenWrt / ImmortalWrt 24.10 及更早):
 
 ```bash
-opkg install luci-app-substore-0.2.0-r2.ipk
+opkg install luci-app-substore-0.2.0-r3.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-0.2.0-r2.apk
+apk add --allow-untrusted luci-app-substore-0.2.0-r3.apk
 ```
 
 ## Documentation

@@ -17,6 +17,7 @@ function index()
 	entry({"admin", "services", "substore", "save"}, call("action_save"), nil)
 	entry({"admin", "services", "substore", "delete"}, call("action_delete"), nil)
 	entry({"admin", "services", "substore", "update"}, call("action_update"), nil)
+	entry({"admin", "services", "substore", "probe"}, call("action_probe"), nil)
 	-- 公开订阅下载端点（无登录态，靠随机 token 访问控制），供 Passwall/OpenClash 等客户端拉取
 	entry({"substore", "download"}, call("action_download"), nil)
 end
@@ -133,6 +134,58 @@ function action_update()
 		end
 	end
 	back_to_list()
+end
+
+-- 节点探测端点：POST id + mode(ping/tcping/url) + proto + keyword，返回 JSON
+function action_probe()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	local node = require("substore.node")
+	local util = require("substore.util")
+	local probe = require("substore.probe")
+	if not post_ok() then
+		http.status(403, "Forbidden")
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("invalid token")
+		return
+	end
+	local id = util.trim(http.formvalue("id") or "")
+	local mode = util.trim(http.formvalue("mode") or "")
+	if mode ~= "ping" and mode ~= "tcping" and mode ~= "url" then
+		http.status(400, "Bad Request")
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("bad mode")
+		return
+	end
+	local meta = core.get(id)
+	if not meta then
+		http.status(404, "Not Found")
+		http.prepare_content("text/plain; charset=utf-8")
+		http.write("not found")
+		return
+	end
+	-- 与 nodes 页一致的过滤：按当前 proto / keyword 过滤后逐个探测
+	local nodes = core.read_nodes(id)
+	local proto = util.trim(http.formvalue("proto") or "")
+	local keyword = util.trim(http.formvalue("keyword") or "")
+	if proto ~= "" then nodes = node.filter(nodes, { proto = proto }) end
+	if keyword ~= "" then nodes = node.filter(nodes, { keyword = keyword }) end
+	nodes = node.sort(nodes, "name", false)
+
+	local results = probe.probe(nodes, mode)
+	local ok_count, sum = 0, 0
+	for _, r in ipairs(results) do
+		if r.latency then
+			ok_count = ok_count + 1
+			sum = sum + r.latency
+		end
+	end
+	local avg = ok_count > 0 and math.floor(sum / ok_count + 0.5) or nil
+	http.prepare_content("application/json; charset=utf-8")
+	http.write(util.json_encode({
+		ok = true, mode = mode, total = #results,
+		ok_count = ok_count, avg = avg, results = results,
+	}))
 end
 
 -- 公开下载端点：GET /substore/download?token=<token>&target=<format>

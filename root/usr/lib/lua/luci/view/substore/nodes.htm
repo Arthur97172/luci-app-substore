@@ -19,12 +19,12 @@
 %>
 <h2><%:Nodes%> — <%=meta and meta.name or ""%></h2>
 <div style="margin:0.5em 0">
-	<a class="cbi-button cbi-button-reset" href="<%=luci.dispatcher.build_url('admin/services/substore/list')%>"><%:Back to subscriptions%></a>
+	<a class="cbi-button cbi-button-reset" href="<%=luci.dispatcher.build_url('admin/services/substore/list')%>"><%:Back%></a>
 </div>
 
 <form method="get" action="<%=luci.dispatcher.build_url('admin/services/substore/nodes')%>" class="cbi-map">
 	<input type="hidden" name="id" value="<%=id%>"/>
-	<div style="display:flex;gap:0.5em;align-items:center;margin:0.5em 0">
+	<div style="display:flex;gap:0.5em;align-items:center;flex-wrap:wrap;margin:0.5em 0">
 		<label><%:Protocol%>:
 			<select name="proto">
 				<option value=""><%:All%></option>
@@ -42,8 +42,11 @@
 				<option value="port" <%=sort_by=="port" and "selected" or ""%>>port</option>
 			</select>
 		</label>
-		<label><input type="checkbox" name="desc" value="1" <%=sort_desc and "checked" or ""%>/><%:Desc%></label>
+		<label style="margin-left:0.5em"><input type="checkbox" name="desc" value="1" <%=sort_desc and "checked" or ""%>/> <%:Desc%></label>
 		<input type="submit" class="cbi-button cbi-button-apply" value="<%:Filter%>"/>
+		<button type="button" class="cbi-button" onclick="runProbe('ping')">Ping</button>
+		<button type="button" class="cbi-button" onclick="runProbe('tcping')">TCPing</button>
+		<button type="button" class="cbi-button" onclick="runProbe('url')"><%:URL Test%></button>
 	</div>
 </form>
 
@@ -66,4 +69,61 @@
 	<tr class="cbi-section-table-row"><td colspan="4" style="text-align:center;color:#808080"><%:No nodes found.%></td></tr>
 	<% end %>
 </table>
+<div id="probe_area" style="display:none;margin:0.5em 0">
+	<div id="probe_summary" style="margin:0.5em 0;color:#808080"></div>
+	<table class="cbi-section-table">
+		<tr class="cbi-section-table-titles">
+			<th><%:Node%></th>
+			<th><%:Address%></th>
+			<th><%:Latency%></th>
+		</tr>
+		<tbody id="probe_body"></tbody>
+	</table>
+</div>
+
+<script>
+function esc(s) {
+	return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function runProbe(mode) {
+	var area = document.getElementById('probe_area');
+	var sum = document.getElementById('probe_summary');
+	var body = document.getElementById('probe_body');
+	var xhr = new XMLHttpRequest();
+	xhr.open('POST', '<%=luci.dispatcher.build_url('admin/services/substore/probe')%>', true);
+	xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+	area.style.display = '';
+	sum.textContent = 'Testing...';
+	body.innerHTML = '';
+	xhr.onreadystatechange = function() {
+		if (xhr.readyState !== 4) return;
+		if (xhr.status !== 200) {
+			sum.textContent = 'Test failed (HTTP ' + xhr.status + ')';
+			return;
+		}
+		var r;
+		try { r = JSON.parse(xhr.responseText); } catch (e) { sum.textContent = 'Parse error'; return; }
+		var rows = '';
+		for (var i = 0; i < r.results.length; i++) {
+			var it = r.results[i];
+			var lat = (it.latency === null || it.latency === undefined)
+				? '<span style="color:#cc0000">Fail</span>'
+				: Math.round(it.latency) + ' ms';
+			rows += '<tr class="cbi-section-table-row"><td>' + esc(it.name) + '</td><td>' + esc(it.server) + ':' + esc(String(it.port)) + '</td><td>' + lat + '</td></tr>';
+		}
+		body.innerHTML = rows;
+		var avgTxt = (r.avg === null || r.avg === undefined) ? '' : ', avg ' + r.avg + ' ms';
+		sum.textContent = r.ok_count + ' / ' + r.total + ' ok' + avgTxt;
+	};
+	var idEl = document.getElementsByName('id')[0];
+	var protoEl = document.getElementsByName('proto')[0];
+	var kwEl = document.getElementsByName('keyword')[0];
+	var params = 'id=' + encodeURIComponent(idEl ? idEl.value : '')
+		+ '&mode=' + encodeURIComponent(mode)
+		+ '&proto=' + encodeURIComponent(protoEl ? protoEl.value : '')
+		+ '&keyword=' + encodeURIComponent(kwEl ? kwEl.value : '')
+		+ '&token=' + encodeURIComponent('<%=token%>');
+	xhr.send(params);
+}
+</script>
 <%+footer%>

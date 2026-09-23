@@ -10,7 +10,7 @@ PKG_NAME:=luci-app-substore
 # 版本约定：每次提交 PKG_RELEASE +1（0.2.0-r1 ~ r9）；
 # 达到 r10 时 PKG_VERSION 末位 +1（0.2.0 -> 0.2.1），PKG_RELEASE 重置为 1。
 PKG_VERSION:=0.2.0
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 
 LUCI_DEPENDS:=+luci-lua-runtime +luci-compat
 
@@ -66,6 +66,10 @@ define Package/luci-app-substore/install
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-substore.json $(1)/usr/share/luci/menu.d/luci-app-substore.json
+
+	# 简体中文翻译（运行时 zh-cn 时由 luci.template.parser 自动加载 *.zh-cn.lmo）
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
+	po2lmo ./po/zh-cn/substore.po $(1)/usr/lib/lua/luci/i18n/substore.zh-cn.lmo
 endef
 
 define Package/luci-app-substore/postinst

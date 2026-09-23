@@ -1,0 +1,137 @@
+# luci-app-substore 简体中文翻译
+# 运行时语言代码 zh-cn（LUCI_LC_ALIAS.zh_Hans=zh-cn），
+# 编译产物 substore.zh-cn.lmo 由 Makefile 的 install 步骤用 po2lmo 生成。
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: zh-cn\n"
+
+# 菜单 / 页面标题
+msgid "Subscriptions"
+msgstr "订阅管理"
+
+msgid "Add subscription"
+msgstr "添加订阅"
+
+msgid "Edit subscription"
+msgstr "编辑订阅"
+
+msgid "Nodes"
+msgstr "节点"
+
+msgid "Output"
+msgstr "输出"
+
+msgid "Merged"
+msgstr "合并"
+
+# 通用按钮 / 标签
+msgid "Back"
+msgstr "返回"
+
+msgid "Name"
+msgstr "名称"
+
+msgid "URL"
+msgstr "订阅地址"
+
+msgid "Updated"
+msgstr "更新时间"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "Subscription link"
+msgstr "订阅链接转换"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Copy"
+msgstr "复制"
+
+msgid "Update"
+msgstr "更新"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Format"
+msgstr "格式"
+
+msgid "Generate"
+msgstr "生成"
+
+# 订阅列表
+msgid "Pending"
+msgstr "待更新"
+
+msgid "OK"
+msgstr "正常"
+
+msgid "Select format"
+msgstr "选择格式"
+
+msgid "No subscriptions yet."
+msgstr "暂无订阅"
+
+msgid "Delete this subscription?"
+msgstr "确定删除该订阅？"
+
+# 订阅编辑表单
+msgid "Subscription URL"
+msgstr "订阅 URL"
+
+msgid "Nodes:"
+msgstr "节点数:"
+
+msgid "Last updated:"
+msgstr "更新时间:"
+
+# 节点页筛选
+msgid "Protocol"
+msgstr "协议"
+
+msgid "All"
+msgstr "全部"
+
+msgid "Keyword"
+msgstr "关键词"
+
+msgid "Sort by"
+msgstr "排序方式"
+
+msgid "Desc"
+msgstr "降序"
+
+msgid "Filter"
+msgstr "筛选"
+
+msgid "Server"
+msgstr "服务器"
+
+msgid "Port"
+msgstr "端口"
+
+msgid "No nodes found."
+msgstr "未找到节点"
+
+# 节点探测结果
+msgid "Node"
+msgstr "节点"
+
+msgid "Address"
+msgstr "地址"
+
+msgid "Latency"
+msgstr "延迟"
+
+msgid "URL Test"
+msgstr "URL 测试"
