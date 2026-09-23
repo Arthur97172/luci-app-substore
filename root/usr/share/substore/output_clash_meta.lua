@@ -35,6 +35,7 @@ local PROTOCOL_TYPE_MAP = {
 	wireguard = "wireguard",
 	socks = "socks5",
 	socks5 = "socks5",
+	ssr = "ssr",
 }
 
 local function get_clash_type(proto)
@@ -170,6 +171,16 @@ local function format_node(node)
 		if node.password then
 			lines[#lines + 1] = "    password: " .. esc_yaml(node.password)
 		end
+	end
+
+	if ctype == "ssr" then
+		lines[#lines + 1] = "    cipher: " .. esc_yaml(node.method or node.cipher or "aes-128-cfb")
+		lines[#lines + 1] = "    protocol: " .. esc_yaml(node.protocol or "origin")
+		lines[#lines + 1] = "    obfs: " .. esc_yaml(node.obfs or "plain")
+		local op = node.obfs_param or node["obfs-param"]
+		local pp = node.protocol_param or node["protocol-param"]
+		if op and op ~= "" then lines[#lines + 1] = "    obfs-param: " .. esc_yaml(op) end
+		if pp and pp ~= "" then lines[#lines + 1] = "    protocol-param: " .. esc_yaml(pp) end
 	end
 
 	return table.concat(lines, "\n")

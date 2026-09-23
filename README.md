@@ -1,153 +1,145 @@
 # luci-app-substore
 
-**English** | [简体中文](README.zh-CN.md)
+**简体中文** | [English](README.en.md)
 
-Native **OpenWrt / ImmortalWrt** LuCI application for managing airport / proxy
-subscriptions. Parse nodes from a subscription, filter, deduplicate, rename and
-group them, then re-emit them in a format your client can consume.
+原生 **OpenWrt / ImmortalWrt** LuCI 应用，用于管理机场 / 代理订阅：解析订阅节点、
+筛选、去重、重命名与分组，再转换为客户端可用的配置格式输出。
 
-## Features
+参考 [Sub-Store](https://github.com/sub-store-org/Sub-Store) 的功能与用户体验，
+独立设计与实现：不使用 Docker，不依赖外部云端服务，资源占用友好，适配低配置路由器。
 
-**Subscription management**
-- Add / edit / delete / update multiple subscription sources
-- Manual update plus per-subscription timed (cron) updates
-- Status overview: node count, last update time, error message
-- Remaining traffic & remaining duration per subscription, parsed from the
-  `subscription-userinfo` response header (shown on the edit page only)
-- **Subscription proxy**: download the subscription through an
-  `http://` / `https://` / `socks4` / `socks5` / `socks5h` proxy — useful when the
-  source is unreachable directly
+## 功能特性
 
-**Input parsing**
-- Subscription formats: URI lists, Base64, JSON, Clash YAML, sing-box JSON,
-  V2Ray / Xray JSON, Surge / Surfboard / Loon / Quantumult X configs, and LAN
-  subscription links
-- Node protocols: `vmess` / `vless` / `trojan` / `shadowsocks` / `hysteria2` /
-  `tuic` / `socks` (and more)
+**订阅管理**
+- 新增 / 编辑 / 删除 / 更新多个订阅源
+- 手动更新 + 按订阅的定时（cron）更新
+- 状态总览：节点数、最近更新时间、错误信息
+- 每个订阅的剩余流量 / 剩余时长，从 `subscription-userinfo` 响应头解析（仅在编辑页显示）
+- **订阅代理**：通过 `http://` / `https://` / `socks4` / `socks5` / `socks5h` 代理下载订阅，
+  用于订阅源直连失败时
 
-**Node processing**
-- Browse nodes, filter by protocol, keyword search, sort
-- Per-subscription rules applied on every update:
-  - protocol filter (whitelist specific protocols)
-  - keyword include / exclude (comma-separated, multi-keyword)
-  - deduplication
-  - renaming — exact `旧=新`, regex `pattern -> replacement`, or template
-    `{server}_{port}_{proto}`
-- Rename, group and tag nodes
+**输入解析**
+- 订阅格式：URI 列表、Base64、JSON、Clash YAML、sing-box JSON、V2Ray / Xray JSON、
+  Surge / Surfboard / Loon / Quantumult X 配置、局域网订阅链接
+- 节点协议：`vmess` / `vless` / `trojan` / `shadowsocks` / `ssr` / `hysteria2` / `tuic` / `socks`（及更多）
 
-**Network probing** (Nodes page)
-- Ping (ICMP latency), TCPing (connect latency), URL test (HTTP latency)
-- Parallel probing, success count and average latency
+**节点处理**
+- 浏览节点，按协议筛选、关键词搜索、排序
+- 每次更新时生效的按订阅规则：
+  - 协议过滤（只保留指定协议）
+  - 关键词包含 / 排除（逗号分隔，支持多关键词）
+  - 去重
+  - 重命名——精确 `旧=新`、正则 `pattern -> replacement`、模板 `{server}_{port}_{proto}`
+- 节点重命名、分组与打标签
 
-**Conversion & output**
-- Protocol conversion: any node type → any other type
-- 13 output formats (all implemented): Plain JSON, Stash, Clash.Meta / Mihomo YAML,
-  Surfboard, Surge, Surge Mac, Loon, Egern, Shadowrocket, Quantumult X, sing-box,
-  V2Ray / Xray, V2Ray URI
+**网络探测**（节点页）
+- Ping（ICMP 延迟）、TCPing（连接延迟）、URL 测试（HTTP 延迟）
+- 并行探测，显示成功数与平均延迟
 
-**Subscription links**
-- Per-subscription random token → public download endpoint
-  `/substore/download?token=<token>&target=<format>` that Passwall / OpenClash and
-  other clients can pull directly
+**转换与输出**
+- 协议转换：任意协议 → 任意协议
+- SSR（`ssr://`）订阅源支持：仅能原样输出到支持它的客户端（Mihomo / Clash.Meta、Stash、
+  Loon、Egern、Shadowrocket），对其余目标（sing-box、V2Ray/Xray、Surge 家族）丢弃；SSR
+  不能与 vmess/vless 等其它协议互转（协议不兼容）
+- 13 种输出格式（全部实现）：Plain JSON、Stash、Clash.Meta / Mihomo YAML、Surfboard、
+  Surge、Surge Mac、Loon、Egern、Shadowrocket、Quantumult X、sing-box、V2Ray / Xray、
+  V2Ray URI
 
-**LuCI web UI & i18n**
-- English by default, 简体中文 auto-selected when the runtime language is `zh-cn`
+**订阅链接**
+- 每个订阅独立随机 token → 公开下载端点
+  `/substore/download?token=<token>&target=<format>`，Passwall / OpenClash 等客户端可直接拉取
 
-## Installation
+**LuCI 界面与国际化**
+- 默认英文，运行时语言为 `zh-cn` 时自动显示简体中文
 
-> The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `0.2.0-r6`).
+## 安装
 
-opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
+> 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
+> （当前 `0.2.0-r7`）。
 
-```bash
-opkg install luci-app-substore-0.2.0-r6.ipk
-```
-
-apk (OpenWrt / ImmortalWrt 25.12+):
+opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-0.2.0-r6.apk
+opkg install luci-app-substore-0.2.0-r7.ipk
 ```
 
-Then open LuCI: **Services → Subscriptions**.
+apk（OpenWrt / ImmortalWrt 25.12+）：
 
-## Usage
+```bash
+apk add --allow-untrusted luci-app-substore-0.2.0-r7.apk
+```
 
-1. **Add a subscription** — paste the subscription URL; optionally set up a
-   per-subscription cron schedule, rules, or a download proxy.
-2. **Update** — fetch, parse and filter the nodes.
-3. **Browse nodes** — filter, sort, and probe latency.
-4. **Export** — pick one of the 13 output formats, or copy the subscription link
-   to feed a downstream client (Passwall / OpenClash / …).
+然后在 LuCI 菜单打开：**服务 → 订阅**。
 
-## Project layout
+## 使用方法
+
+1. **添加订阅** —— 粘贴订阅 URL；可选的按订阅 cron 定时、规则或下载代理。
+2. **更新** —— 下载、解析并过滤节点。
+3. **浏览节点** —— 筛选、排序、探测延迟。
+4. **导出** —— 任选 13 种格式之一，或复制订阅链接供下游客户端（Passwall / OpenClash / …）使用。
+
+## 目录结构
 
 ```
 .
-├── Makefile                      # OpenWrt package definition
+├── Makefile                      # OpenWrt 包定义
 ├── LICENSE                       # GPL-2.0-or-later
-├── root/                         # install payload
+├── root/                         # 安装内容
 │   ├── etc/
-│   │   ├── config/substore       # UCI placeholder
+│   │   ├── config/substore       # UCI 占位
 │   │   └── uci-defaults/99-substore
 │   ├── usr/
-│   │   ├── bin/substore-cron.sh  # per-subscription cron runner
+│   │   ├── bin/substore-cron.sh  # 按订阅 cron 执行脚本
 │   │   ├── lib/lua/luci/
-│   │   │   ├── controller/admin/substore.lua   # routes / actions
-│   │   │   └── view/substore/*.htm             # templates
+│   │   │   ├── controller/admin/substore.lua   # 路由 / 动作
+│   │   │   └── view/substore/*.htm             # 模板
 │   │   └── share/
 │   │       ├── luci/menu.d/luci-app-substore.json
-│   │       └── substore/*.lua    # core logic (no luci.* dependency)
-├── po/zh-cn/substore.po          # 简体中文 translations
-├── docs/                         # design & guides
-└── tests/                        # self-contained Lua 5.1 unit tests
+│   │       └── substore/*.lua    # 核心逻辑（不依赖 luci.*）
+├── po/zh-cn/substore.po          # 简体中文翻译
+├── docs/                         # 设计与指南
+└── tests/                        # 自包含 Lua 5.1 单元测试
 ```
 
-## Documentation
+## 文档
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — architecture design
-- [docs/PLAN.md](docs/PLAN.md) — staged development plan
-- [docs/BUILD.md](docs/BUILD.md) — building from an OpenWrt SDK/source tree
-- [docs/INSTALL.md](docs/INSTALL.md) — installation
-- [docs/SECURITY.md](docs/SECURITY.md) — security model
-- [docs/TESTING.md](docs/TESTING.md) — testing
-- [docs/UCODE_MIGRATION.md](docs/UCODE_MIGRATION.md) — `.htm` → `.ut` (ucode) migration notes
-- [CHANGELOG.md](CHANGELOG.md) — changelog
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 架构设计
+- [docs/PLAN.md](docs/PLAN.md) — 分阶段开发计划
+- [docs/BUILD.md](docs/BUILD.md) — 从 OpenWrt SDK / 源码树构建
+- [docs/INSTALL.md](docs/INSTALL.md) — 安装
+- [docs/SECURITY.md](docs/SECURITY.md) — 安全模型
+- [docs/TESTING.md](docs/TESTING.md) — 测试
+- [docs/UCODE_MIGRATION.md](docs/UCODE_MIGRATION.md) — `.htm` → `.ut`（ucode）迁移说明
+- [CHANGELOG.md](CHANGELOG.md) — 更新日志
 
-## Building
+## 构建
 
-Place the package under an OpenWrt / ImmortalWrt SDK or source tree matching the
-target firmware, then:
+将本包放入与目标固件版本匹配的 OpenWrt / ImmortalWrt SDK 或源码树：
 
 ```bash
 cp -r luci-app-substore <openwrt-tree>/package/
 make package/luci-app-substore/compile V=s
 ```
 
-The `.ipk` (or `.apk` on apk builds) is produced under `bin/packages/.../`.
+`.ipk`（或 apk 构建下的 `.apk`）生成于 `bin/packages/.../` 下。
 
-## Development & testing
+## 开发与测试
 
-The core is plain Lua 5.1 with no `luci.*` dependency, so it is unit-testable
-without a device. Each file under `tests/` is self-contained:
+核心逻辑为纯 Lua 5.1，不依赖 `luci.*`，无需设备即可单元测试。`tests/` 下每个测试文件自包含：
 
 ```bash
-lua5.1 tests/run_tests.lua          # or any single test file
+lua5.1 tests/run_tests.lua          # 或任意单个测试文件
 for f in tests/*.lua; do lua5.1 "$f" || exit 1; done
 ```
 
-Target-device verification is required for the LuCI UI and cron behaviour — see
-[docs/TESTING.md](docs/TESTING.md).
+LuCI 界面与 cron 行为仍需在目标设备上验证 —— 见 [docs/TESTING.md](docs/TESTING.md)。
 
-## Security
+## 安全
 
-SSRF protection (private / reserved / link-local ranges rejected), protocol
-whitelisting, response size & timeout limits, command-injection defence
-(whitelisted parsing + shell quoting), token-based access control on the public
-download endpoint, and no credentials in logs. See
-[docs/SECURITY.md](docs/SECURITY.md).
+SSRF 防护（拒绝内网 / 保留 / 链路本地地址）、协议白名单、响应体大小与超时限制、
+命令注入防护（白名单解析 + shell 引用）、公开下载端点基于 token 的访问控制、日志不含凭据。
+详见 [docs/SECURITY.md](docs/SECURITY.md)。
 
-## License
+## 许可证
 
-[GPL-2.0-or-later](LICENSE) — see the [LICENSE](LICENSE) file.
+[GPL-2.0-or-later](LICENSE) —— 见 [LICENSE](LICENSE) 文件。

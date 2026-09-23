@@ -107,7 +107,31 @@ function M.to_share_uri(n)
 		return "socks5://" .. userinfo .. server .. ":" .. tostring(port) .. "#" .. name
 	end
 
+	if proto == "ssr" then
+		return M.to_ssr_uri(n)
+	end
+
 	return nil
+end
+
+-- 生成 ssr:// 分享链接（外层与密码为标准 base64，参数为 base64url）
+function M.to_ssr_uri(n)
+	if type(n) ~= "table" or not n.server then return nil end
+	local server = n.server
+	local port = tostring(tonumber(n.port) or 0)
+	local protocol = n.protocol or "origin"
+	local method = n.method or n.cipher or "aes-128-cfb"
+	local obfs = n.obfs or "plain"
+	local password = n.password or ""
+	local main = table.concat({ server, port, protocol, method, obfs, util.base64_encode(password) }, ":")
+	local q = {}
+	local op = n.obfs_param or n["obfs-param"]
+	local pp = n.protocol_param or n["protocol-param"]
+	if op and op ~= "" then q[#q + 1] = "obfsparam=" .. util.base64_url_encode(op) end
+	if pp and pp ~= "" then q[#q + 1] = "protoparam=" .. util.base64_url_encode(pp) end
+	q[#q + 1] = "remarks=" .. util.base64_url_encode(n.name or server)
+	if n.group and n.group ~= "" then q[#q + 1] = "group=" .. util.base64_url_encode(n.group) end
+	return "ssr://" .. util.base64_encode(main .. "/?" .. table.concat(q, "&"))
 end
 
 -- 生成 URI 列表（每行一条，丢弃无法生成 URI 的节点）

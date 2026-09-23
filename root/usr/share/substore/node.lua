@@ -4,7 +4,7 @@
 local M = {}
 
 M.PROTOS = {
-	"vmess", "vless", "trojan", "shadowsocks", "hysteria2", "tuic", "hysteria", "wireguard", "socks",
+	"vmess", "vless", "trojan", "shadowsocks", "ssr", "hysteria2", "tuic", "hysteria", "wireguard", "socks",
 }
 
 -- 协议默认值，用于补全缺省字段

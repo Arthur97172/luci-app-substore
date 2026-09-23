@@ -81,6 +81,7 @@ end
 -- 单节点 → sing-box outbound 表
 function M.to_outbound(n)
 	local stype = TYPE_MAP[n.proto] or n.proto
+	if stype == "ssr" then return nil end -- sing-box 不支持 SSR，跳过
 	local o = {
 		type = stype,
 		tag = n.name or ((n.server or "") .. ":" .. tostring(n.port or "")),
@@ -129,7 +130,8 @@ function M.generate(nodes)
 	local outbounds = {}
 	for _, n in ipairs(nodes or {}) do
 		if type(n) == "table" then
-			outbounds[#outbounds + 1] = M.to_outbound(n)
+			local o = M.to_outbound(n)
+			if o then outbounds[#outbounds + 1] = o end
 		end
 	end
 	return util.json_encode({ outbounds = outbounds })

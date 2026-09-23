@@ -41,6 +41,15 @@ function M.surge_line(n)
 		e[#e + 1] = "password=" .. (n.password or "")
 		e[#e + 1] = "tls=true"
 		if n.sni then e[#e + 1] = "sni=" .. n.sni end
+	elseif proto == "ssr" then
+		e[#e + 1] = "encrypt-method=" .. (n.method or n.cipher or "aes-128-cfb")
+		e[#e + 1] = "password=" .. (n.password or "")
+		e[#e + 1] = "protocol=" .. (n.protocol or "origin")
+		e[#e + 1] = "obfs=" .. (n.obfs or "plain")
+		local op = n.obfs_param or n["obfs-param"]
+		local pp = n.protocol_param or n["protocol-param"]
+		if op and op ~= "" then e[#e + 1] = "obfs-param=" .. op end
+		if pp and pp ~= "" then e[#e + 1] = "protocol-param=" .. pp end
 	elseif proto == "hysteria2" then
 		e[#e + 1] = "password=" .. (n.password or "")
 		if n.sni then e[#e + 1] = "sni=" .. n.sni end
@@ -68,16 +77,25 @@ local function names_of(nodes)
 	return out
 end
 
--- Surge 家族配置（Surge / Surfboard / SurgeMac 通用）
-local function surge_config(nodes, group_name)
+-- Surge 家族配置（Surge / Surfboard / SurgeMac / Loon / Egern 通用）
+-- supports_ssr：Loon / Egern 支持 SSR；Surge / Surfboard / SurgeMac 不支持，跳过 ssr 节点
+local function surge_config(nodes, group_name, supports_ssr)
+	local list = nodes or {}
+	if not supports_ssr then
+		local kept = {}
+		for _, n in ipairs(list) do
+			if (n.proto or ""):lower() ~= "ssr" then kept[#kept + 1] = n end
+		end
+		list = kept
+	end
 	local out = {}
 	out[#out + 1] = "[Proxy]"
-	for _, n in ipairs(nodes or {}) do
+	for _, n in ipairs(list) do
 		out[#out + 1] = M.surge_line(n)
 	end
 	out[#out + 1] = ""
 	out[#out + 1] = "[Proxy Group]"
-	local names = names_of(nodes)
+	local names = names_of(list)
 	local select = group_name .. " = select"
 	for _, nm in ipairs(names) do select = select .. ", " .. nm end
 	select = select .. ", DIRECT"
@@ -87,28 +105,28 @@ end
 
 function M.to_surge(nodes, options)
 	options = options or {}
-	return surge_config(nodes, options.name or "PROXY")
+	return surge_config(nodes, options.name or "PROXY", false)
 end
 
 function M.to_surfboard(nodes, options)
 	options = options or {}
-	return surge_config(nodes, options.name or "PROXY")
+	return surge_config(nodes, options.name or "PROXY", false)
 end
 
 function M.to_surgemac(nodes, options)
 	options = options or {}
-	return surge_config(nodes, options.name or "PROXY")
+	return surge_config(nodes, options.name or "PROXY", false)
 end
 
--- Loon / Egern：Surge 兼容语法
+-- Loon / Egern：Surge 兼容语法（支持 SSR）
 function M.to_loon(nodes, options)
 	options = options or {}
-	return surge_config(nodes, options.name or "PROXY")
+	return surge_config(nodes, options.name or "PROXY", true)
 end
 
 function M.to_egern(nodes, options)
 	options = options or {}
-	return surge_config(nodes, options.name or "PROXY")
+	return surge_config(nodes, options.name or "PROXY", true)
 end
 
 -- Stash：Clash 兼容 YAML

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 新增 SSR（ShadowsocksR）订阅源支持
+  - parser.lua：SUPPORTED 增加 ssr；新增 parse_ssr 解析 ssr:// 分享链接（外层 base64、
+    密码/参数 base64url 兼容标准 base64，remarks/obfsparam/protoparam/group）
+  - util.lua：新增 base64_url_encode / base64_url_decode（RFC 4648 base64url）
+  - node.lua：PROTOS 注册 ssr
+  - output_clash_meta.lua：ssr 输出完整字段（cipher/password/protocol/obfs/obfs-param/protocol-param）
+  - output_uri.lua：新增 to_ssr_uri 生成 ssr:// 分享链接（Shadowrocket / V2Ray URI 输出）
+  - output_formats.lua：Loon / Egern 输出 SSR 行；Surge/Surfboard/SurgeMac 跳过 ssr（不支持）
+  - output_singbox.lua / output_v2ray.lua：跳过 ssr（不支持 SSR，丢弃而非输出非法配置）
+  - SSR 仅能原样输出到支持它的客户端，不能与 vmess/vless 等其它协议互转（协议不兼容）
+  - view/form.htm：「订阅 URL」输入框宽度与「代理地址」对齐（70% → 60%）
+  - tests/ssr_test.lua 新增（41 断言）
 - 编辑订阅页新增「订阅代理」：开启后通过代理地址下载订阅（解决国内直连失败）
   - http.lua：新增 parse_proxy（http/https/socks4/socks5/socks5h，含 user:pass@，防注入）；download/curl/wget 支持代理
   - core.lua：订阅元数据新增 proxy_enable/proxy；sync() 开启且地址有效时经代理下载

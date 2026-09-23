@@ -57,6 +57,18 @@ function M.base64_decode(s)
 	return table.concat(out)
 end
 
+-- URL-safe Base64（RFC 4648 base64url）：- _ 代替 + /，无 padding
+function M.base64_url_encode(s)
+	s = s or ""
+	return (M.base64_encode(s):gsub("+", "-"):gsub("/", "_"):gsub("=+$", ""))
+end
+
+function M.base64_url_decode(s)
+	if type(s) ~= "string" then return "" end
+	s = s:gsub("-", "+"):gsub("_", "/")
+	return M.base64_decode(s)
+end
+
 -- 生成随机十六进制 token（用于下载链接访问控制）
 function M.rnd_hex(len)
 	len = len or 16

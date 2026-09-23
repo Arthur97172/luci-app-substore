@@ -10,7 +10,7 @@ local parser_surge = require("substore.parser_surge")
 
 local M = {}
 
-local SUPPORTED = { vmess = true, vless = true, trojan = true, ss = true }
+local SUPPORTED = { vmess = true, vless = true, trojan = true, ss = true, ssr = true }
 
 local function split_lines(content)
 	local out = {}
@@ -37,8 +37,8 @@ function M.detect(content)
 		end
 	end
 	if stripped:find("vmess://", 1, true) or stripped:find("vless://", 1, true)
-		or stripped:find("trojan://", 1, true) or stripped:find("ss://", 1, true)
-		or content:find("://", 1, true) then
+		or stripped:find("trojan://", 1, true) or stripped:find("ssr://", 1, true)
+		or stripped:find("ss://", 1, true) or content:find("://", 1, true) then
 		return "uri"
 	end
 	if stripped:match("^[A-Za-z0-9+/]*=*$") and #stripped > 10 then
@@ -100,6 +100,62 @@ local function parse_ss(body)
 		method = method, password = password, raw = ("ss://" .. body),
 	})
 	if query.plugin then out.plugin = query.plugin end
+	return out
+end
+
+-- SSR 参数值可能为 base64url、标准 base64 或纯文本：优先 base64url 解码，失败回退 URL 解码
+local function b64u_decode(s)
+	s = s or ""
+	local v = util.base64_url_decode(s)
+	if v ~= "" then return v end
+	return util.url_decode(s)
+end
+
+local function parse_ssr(body)
+	-- ssr://base64(server:port:protocol:method:obfs:base64(password)/?obfsparam=..&protoparam=..&remarks=..&group=..)
+	-- 外层为标准 base64；密码字段可为标准/base64url base64；obfsparam/protoparam/remarks/group 为 base64url
+	if not body or body == "" then return nil, "bad ssr" end
+	-- 容忍 #fragment 与 URL 转义（部分生成器会在末尾追加）
+	local rest, frag = body, ""
+	local hash = rest:find("#", 1, true)
+	if hash then
+		frag = util.url_decode(rest:sub(hash + 1))
+		rest = rest:sub(1, hash - 1)
+	end
+	if rest:find("%", 1, true) then rest = util.url_decode(rest) end
+	local decoded = util.base64_decode(rest)
+	if decoded == "" then return nil, "bad ssr" end
+
+	-- 以首个 '?' 切分主体与参数（密码 base64 可能含 '/'，故不能按 '/' 切分）
+	local main, query = decoded:match("^([^?]*)%?(.*)$")
+	if not main then main, query = decoded, "" end
+	main = main:gsub("/+$", "")
+
+	local server, port, protocol, method, obfs, pwd_b64 = main:match("^([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$")
+	if not server or server == "" then return nil, "bad ssr" end
+	local password = util.base64_url_decode(pwd_b64 or "")
+	if password == "" then password = pwd_b64 or "" end
+
+	local params = {}
+	for k, v in (query or ""):gmatch("([^&=]+)=([^&]*)") do
+		params[k] = v
+	end
+
+	local name = b64u_decode(params.remarks or "")
+	if name == "" then name = frag end
+	if name == "" then name = server .. ":" .. tostring(port or "") end
+
+	local out = node.normalize({
+		proto = "ssr", name = name, server = server, port = tonumber(port),
+		method = method, password = password, protocol = protocol, obfs = obfs,
+		raw = ("ssr://" .. body),
+	})
+	local op = b64u_decode(params.obfsparam or "")
+	local pp = b64u_decode(params.protoparam or "")
+	if op ~= "" then out.obfs_param = op end
+	if pp ~= "" then out.protocol_param = pp end
+	local grp = b64u_decode(params.group or "")
+	if grp ~= "" then out.group = grp end
 	return out
 end
 
@@ -219,6 +275,7 @@ function M.parse_uri(uri)
 	proto = proto:lower()
 	if not SUPPORTED[proto] then return nil, "unsupported proto " .. proto end
 	if proto == "ss" then return parse_ss(body) end
+	if proto == "ssr" then return parse_ssr(body) end
 	if proto == "vless" then return parse_vless(uri, body) end
 	if proto == "trojan" then return parse_trojan(uri, body) end
 	if proto == "vmess" then return parse_vmess(uri, body) end
