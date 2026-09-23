@@ -17,6 +17,22 @@ Native OpenWrt / ImmortalWrt LuCI application for managing airport subscriptions
 
 > Status: under active development. See [docs/PLAN.md](docs/PLAN.md) for the staged roadmap.
 
+## Manual Install / 手动安装
+
+> 包名中的版本号需与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持同步。
+
+opkg (OpenWrt / ImmortalWrt 24.10 及更早):
+
+```bash
+opkg install luci-app-substore-0.2.0-r1.ipk
+```
+
+apk (OpenWrt / ImmortalWrt 25.12+):
+
+```bash
+apk add --allow-untrusted luci-app-substore-0.2.0-r1.apk
+```
+
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — architecture design
