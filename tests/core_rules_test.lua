@@ -53,6 +53,14 @@ check("keyword_include HK", #r2 == 3)
 local r3 = core.apply_rules(nodes, { rules_enable = "1", keyword_exclude = "US" })
 check("keyword_exclude US", #r3 == 3)
 
+-- ---------- 多关键词（逗号分隔）----------
+local rm1 = core.apply_rules(nodes, { rules_enable = "1", keyword_include = "HK,trojan" })
+check("multi keyword_include HK,trojan", #rm1 == 3)
+local rm2 = core.apply_rules(nodes, { rules_enable = "1", keyword_exclude = "US,vless" })
+check("multi keyword_exclude US,vless", #rm2 == 3)
+local rm3 = core.apply_rules(nodes, { rules_enable = "1", keyword_include = "HK，trojan" })
+check("multi keyword Chinese comma", #rm3 == 3)
+
 -- ---------- 去重 ----------
 local r4 = core.apply_rules(nodes, { rules_enable = "1", dedup = "1" })
 check("dedup removes duplicate", #r4 == 3)

@@ -113,6 +113,28 @@ function M.rename(node, new_name)
 	return node
 end
 
+-- 将关键词串拆分为数组（英文逗号/中文逗号/空白分隔），忽略空项，并统一小写
+local function split_keywords(s)
+	local out = {}
+	for kw in (s or ""):gmatch("[^,%s，]+") do
+		kw = kw:lower()
+		if kw ~= "" then out[#out + 1] = kw end
+	end
+	return out
+end
+
+-- 判断节点 name/server 是否命中任一关键词
+local function match_keywords(n, kws)
+	local name = (n.name or ""):lower()
+	local server = (n.server or ""):lower()
+	for _, kw in ipairs(kws) do
+		if name:find(kw, 1, true) or server:find(kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
 -- 应用规则集到节点列表
 function M.apply_rules(nodes, rules)
 	rules = rules or {}
@@ -162,23 +184,19 @@ function M.apply_rules(nodes, rules)
 	end
 	-- 关键词包含
 	if rules.keyword_include and rules.keyword_include ~= "" then
-		local kw = rules.keyword_include:lower()
+		local kws = split_keywords(rules.keyword_include)
 		local out = {}
 		for _,n in ipairs(nodes) do
-			if (n.name or ""):lower():find(kw,1,true) or (n.server or ""):lower():find(kw,1,true) then
-				out[#out+1]=n
-			end
+			if match_keywords(n, kws) then out[#out+1]=n end
 		end
 		nodes = out
 	end
 	-- 关键词排除
 	if rules.keyword_exclude and rules.keyword_exclude ~= "" then
-		local kw = rules.keyword_exclude:lower()
+		local kws = split_keywords(rules.keyword_exclude)
 		local out = {}
 		for _,n in ipairs(nodes) do
-			if not ((n.name or ""):lower():find(kw,1,true) or (n.server or ""):lower():find(kw,1,true)) then
-				out[#out+1]=n
-			end
+			if not match_keywords(n, kws) then out[#out+1]=n end
 		end
 		nodes = out
 	end
