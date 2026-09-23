@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- 编辑订阅页展示剩余流量 / 剩余时长（仅编辑页，首页不显示）
+  - http.lua：下载时捕获响应头，download() 返回值改为 body, headers, err；新增 read_headers
+  - core.lua：新增 parse_userinfo；sync() 解析 subscription-userinfo 头并持久化 upload/download/total/expire
+  - util.lua：新增 human_bytes / human_duration
+  - view/form.htm：统计行新增「剩余流量 / 剩余时长」
+  - po/zh-cn：新增 Remaining traffic / Remaining time 翻译
+  - tests/core_userinfo_test.lua 新增
 - 简体中文 i18n（运行时语言 zh-cn 时自动显示中文，英文时保持英文；24.10 / 25.12 实机均已验证）
   - po/zh-cn/substore.po 新增（菜单/按钮/列头/探测结果等全部 UI 字符串）
   - Makefile: install 步骤用 po2lmo 编译为 substore.zh-cn.lmo 并打包到 /usr/lib/lua/luci/i18n/

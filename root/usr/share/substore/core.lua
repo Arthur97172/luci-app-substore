@@ -174,6 +174,21 @@ function M.read_nodes(id)
 	return nodes
 end
 
+-- 解析 subscription-userinfo 响应头（upload/download/total/expire），返回数字表或 nil
+function M.parse_userinfo(s)
+	if type(s) ~= "string" or s == "" then return nil end
+	local u = {}
+	for k, v in s:gmatch("([%w_%-]+)%s*=%s*([^;]+)") do
+		local key = k:lower()
+		if key == "upload" or key == "download" or key == "total" or key == "expire" then
+			local num = tonumber(util.trim(v))
+			if num then u[key] = num end
+		end
+	end
+	if next(u) == nil then return nil end
+	return u
+end
+
 -- 下载并解析订阅，写入节点文件并更新状态。成功返回 node_count，失败返回 nil, err
 function M.sync(id)
 	local log = function(msg) os.execute("logger -t luci-app-substore " .. string.format("%q", msg)) end
@@ -182,13 +197,16 @@ function M.sync(id)
 	if not meta then log("Sync fail: subscription not found"); return nil, "订阅不存在" end
 	if not meta.url or meta.url == "" then log("Sync fail: no URL"); return nil, "无订阅 URL" end
 
-	local content, err = http.download(meta.url, { max_size = M.MAX_SIZE, timeout = M.TIMEOUT })
+	local content, headers, err = http.download(meta.url, { max_size = M.MAX_SIZE, timeout = M.TIMEOUT })
 	if not content then
 		log("Download fail: " .. tostring(err))
 		M.save_meta(id, { error = err, last_update = os.time() })
 		return nil, err
 	end
 	log("Download ok size="..#content)
+
+	local ui = M.parse_userinfo(headers and headers["subscription-userinfo"])
+	if ui then log("Userinfo total="..tostring(ui.total).." expire="..tostring(ui.expire)) end
 
 	local res, perr = parser.parse(content)
 	if not res or not res.nodes then
@@ -206,6 +224,7 @@ function M.sync(id)
 
 	local ok = M.save_meta(id, {
 		node_count = #nodes, format = res.format, error = "", last_update = os.time(),
+		upload = ui and ui.upload, download = ui and ui.download, total = ui and ui.total, expire = ui and ui.expire,
 	})
 	if not ok then return nil, "更新状态失败" end
 	return #nodes

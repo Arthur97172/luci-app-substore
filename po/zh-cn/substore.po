@@ -95,6 +95,12 @@ msgstr "节点数:"
 msgid "Last updated:"
 msgstr "更新时间:"
 
+msgid "Remaining traffic:"
+msgstr "剩余流量:"
+
+msgid "Remaining time:"
+msgstr "剩余时长:"
+
 # 节点页筛选
 msgid "Protocol"
 msgstr "协议"

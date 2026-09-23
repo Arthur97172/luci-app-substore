@@ -141,6 +141,18 @@ local function location_from_headers(path)
 	return nil
 end
 
+-- 读取响应头（curl -D 输出），返回小写键 → 值的表；重复键取最后一个
+local function read_headers(path)
+	local h = {}
+	local raw = util.read_file(path)
+	if not raw then return h end
+	for line in raw:gmatch("[^\r\n]+") do
+		local k, v = line:match("^%s*([^:]+):%s*(.*)$")
+		if k then h[k:lower()] = v end
+	end
+	return h
+end
+
 local function resolve_url(base, loc)
 	if loc:find("://", 1, true) then return loc end
 	local scheme, host = base:match("^([%w]+)://([^/]+)")
@@ -173,9 +185,10 @@ local function fetch_curl(url, parsed, opts)
 			local size = util.file_size(tmp)
 			if size > max then return nil, "响应超过大小限制 (" .. max .. " 字节)" end
 			local content = util.read_file(tmp)
+			local headers = read_headers(hdr)
 			os.remove(tmp); os.remove(hdr); os.remove(errf)
 			if not content then return nil, "读取响应失败" end
-			return content
+			return content, headers
 		end
 		if code:match("^3%d%d$") then
 			local loc = location_from_headers(hdr)
@@ -205,7 +218,7 @@ local function fetch_wget(url, parsed, opts)
 	local content = util.read_file(tmp)
 	os.remove(tmp)
 	if not content then return nil, "读取响应失败" end
-	return content
+	return content, {} -- wget 不捕获响应头（无 subscription-userinfo）
 end
 
 local function fetch(tool, url, parsed, opts)
@@ -224,7 +237,9 @@ function M.download(url, opts)
 	if not ok then return nil, reason end
 	local tool = detect_tool()
 	if not tool then return nil, "无可用下载工具 (curl/wget)" end
-	return fetch(tool, url, parsed, { max_size = max_size, timeout = timeout })
+	local body, headers = fetch(tool, url, parsed, { max_size = max_size, timeout = timeout })
+	if not body then return nil, nil, headers end
+	return body, headers or {}, nil
 end
 
 return M

@@ -337,4 +337,33 @@ function M.ensure_dir(path)
 	os.execute("mkdir -p " .. string.format("%q", path))
 end
 
+-- ---------- 人性化格式 ----------
+-- 字节数 → 可读字符串（B/K/M/G/T），如 20G、512M
+function M.human_bytes(n)
+	n = tonumber(n) or 0
+	n = math.floor(n + 0.5)
+	if n <= 0 then return "0B" end
+	local units = { "B", "K", "M", "G", "T" }
+	local i, v = 1, n
+	while v >= 1024 and i < #units do
+		v = v / 1024
+		i = i + 1
+	end
+	local s = string.format("%.1f", v):gsub("%.0$", "")
+	return s .. units[i]
+end
+
+-- 秒数 → 可读时长（天/小时/分钟），如 10天、8小时
+function M.human_duration(secs)
+	secs = tonumber(secs) or 0
+	if secs <= 0 then return "已过期" end
+	local d = secs / 86400
+	if d >= 1 then return string.format("%d天", math.floor(d)) end
+	local h = secs / 3600
+	if h >= 1 then return string.format("%d小时", math.floor(h)) end
+	local m = secs / 60
+	if m >= 1 then return string.format("%d分钟", math.floor(m)) end
+	return "不足1分钟"
+end
+
 return M
