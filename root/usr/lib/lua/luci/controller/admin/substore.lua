@@ -13,8 +13,6 @@ function index()
 	entry({"admin", "services", "substore", "form"}, template("substore/form"), nil)
 	entry({"admin", "services", "substore", "nodes"}, template("substore/nodes"), nil)
 	entry({"admin", "services", "substore", "output"}, template("substore/output"), nil)
-	entry({"admin", "services", "substore", "settings"}, template("substore/settings"), nil)
-	entry({"admin", "services", "substore", "settings_save"}, call("action_settings_save"), nil)
 	entry({"admin", "services", "substore", "create"}, call("action_create"), nil)
 	entry({"admin", "services", "substore", "save"}, call("action_save"), nil)
 	entry({"admin", "services", "substore", "delete"}, call("action_delete"), nil)
@@ -48,6 +46,25 @@ local function read_cron_fields()
 	return cron_enable, cron_time
 end
 
+-- 从表单读取订阅级规则字段，返回规则表
+local function read_rules_fields()
+	local http = require("luci.http")
+	local proto_list = {}
+	for _, p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do
+		if http.formvalue("proto_filter_"..p) then proto_list[#proto_list+1]=p end
+	end
+	local rules_enable = http.formvalue("rules_enable") or "0"
+	if rules_enable ~= "1" then rules_enable = "0" end
+	return {
+		rules_enable = rules_enable,
+		proto_filter = table.concat(proto_list, ","),
+		keyword_include = http.formvalue("keyword_include") or "",
+		keyword_exclude = http.formvalue("keyword_exclude") or "",
+		dedup = http.formvalue("dedup") or "0",
+		rename_map = http.formvalue("rename_map") or "",
+	}
+end
+
 function action_create()
 	local http = require("luci.http")
 	local core = require("substore.core")
@@ -56,7 +73,13 @@ function action_create()
 		local url = (http.formvalue("url") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		if name ~= "" and url ~= "" then
 			local cron_enable, cron_time = read_cron_fields()
-			core.add(name, url, { cron_enable = cron_enable, cron_time = cron_time })
+			local rules = read_rules_fields()
+			core.add(name, url, {
+				cron_enable = cron_enable, cron_time = cron_time,
+				rules_enable = rules.rules_enable, proto_filter = rules.proto_filter,
+				keyword_include = rules.keyword_include, keyword_exclude = rules.keyword_exclude,
+				dedup = rules.dedup, rename_map = rules.rename_map,
+			})
 			core.write_cron()
 		end
 	end
@@ -72,7 +95,14 @@ function action_save()
 		local url = (http.formvalue("url") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		if name ~= "" and url ~= "" then
 			local cron_enable, cron_time = read_cron_fields()
-			core.save_meta(id, { name = name, url = url, cron_enable = cron_enable, cron_time = cron_time })
+			local rules = read_rules_fields()
+			core.save_meta(id, {
+				name = name, url = url,
+				cron_enable = cron_enable, cron_time = cron_time,
+				rules_enable = rules.rules_enable, proto_filter = rules.proto_filter,
+				keyword_include = rules.keyword_include, keyword_exclude = rules.keyword_exclude,
+				dedup = rules.dedup, rename_map = rules.rename_map,
+			})
 			core.write_cron()
 		end
 	end
@@ -127,23 +157,4 @@ function action_download()
 	http.header("Content-Disposition",
 		"attachment; filename=\"" .. safe_name .. "\"")
 	http.write(content)
-end
-
-function action_settings_save()
-	local http = require("luci.http")
-	local uci = require("luci.model.uci").cursor()
-	if post_ok() then
-		-- proto filter multi checkbox
-		local proto_list = {}
-		for _,p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do
-			if http.formvalue("proto_filter_"..p) then proto_list[#proto_list+1]=p end
-		end
-		uci:set("substore", "default", "proto_filter", table.concat(proto_list, ","))
-		uci:set("substore", "default", "keyword_include", http.formvalue("keyword_include") or "")
-		uci:set("substore", "default", "keyword_exclude", http.formvalue("keyword_exclude") or "")
-		uci:set("substore", "default", "dedup", http.formvalue("dedup") or "0")
-		uci:set("substore", "default", "rename_map", http.formvalue("rename_map") or "")
-		uci:commit("substore")
-	end
-	http.redirect(luci.dispatcher.build_url("admin", "services", "substore", "settings"))
 end

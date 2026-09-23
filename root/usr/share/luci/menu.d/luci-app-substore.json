@@ -14,13 +14,5 @@
             "type": "view",
             "path": "admin/services/substore/list"
         }
-    },
-    "admin/services/substore/settings": {
-        "title": "Settings",
-        "order": 20,
-        "action": {
-            "type": "view",
-            "path": "admin/services/substore/settings"
-        }
     }
 }

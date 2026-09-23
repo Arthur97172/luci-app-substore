@@ -81,6 +81,12 @@ function M.add(name, url, opts)
 		token = util.rnd_hex(16),
 		cron_enable = (opts.cron_enable == true or opts.cron_enable == "1") and cron_time ~= "",
 		cron_time = cron_time,
+		rules_enable = (opts.rules_enable == true or opts.rules_enable == "1") and true or false,
+		proto_filter = util.trim(opts.proto_filter or ""),
+		keyword_include = util.trim(opts.keyword_include or ""),
+		keyword_exclude = util.trim(opts.keyword_exclude or ""),
+		dedup = (opts.dedup == true or opts.dedup == "1") and "1" or "0",
+		rename_map = opts.rename_map or "",
 	}
 	if not save(seq, items) then return nil, "写入失败" end
 	return id
@@ -192,7 +198,7 @@ function M.sync(id)
 	end
 	log("Parse ok nodes="..#res.nodes)
 
-	local nodes = res.nodes
+	local nodes = M.apply_rules(res.nodes, meta)
 	if not M.write_nodes(id, nodes) then
 		M.save_meta(id, { error = "写入节点数据失败", last_update = os.time() })
 		return nil, "写入节点数据失败"
@@ -205,16 +211,19 @@ function M.sync(id)
 	return #nodes
 end
 
--- 读取 UCI 规则
-local function load_rules()
-	local uci = require("luci.model.uci").cursor()
-	local r = {}
-	r.proto_filter = uci:get("substore", "default", "proto_filter") or ""
-	r.keyword_include = uci:get("substore", "default", "keyword_include") or ""
-	r.keyword_exclude = uci:get("substore", "default", "keyword_exclude") or ""
-	r.dedup = uci:get("substore", "default", "dedup") or "0"
-	r.rename_map = uci:get("substore", "default", "rename_map") or ""
-	return r
+-- 对节点应用订阅级规则（rules_enable 为真时生效）；纯函数，便于测试
+function M.apply_rules(nodes, meta)
+	meta = meta or {}
+	if not (meta.rules_enable == true or meta.rules_enable == "1") then return nodes end
+	local node_mod = require("substore.node")
+	local rules = {
+		proto_filter = meta.proto_filter or "",
+		keyword_include = meta.keyword_include or "",
+		keyword_exclude = meta.keyword_exclude or "",
+		dedup = meta.dedup or "0",
+		rename_map = meta.rename_map or "",
+	}
+	return node_mod.apply_rules(nodes, rules)
 end
 
 -- 合并多个订阅的节点
@@ -228,10 +237,7 @@ function M.merge(ids, opts)
 			all[#all + 1] = n
 		end
 	end
-	-- 应用 UCI 规则
-	local rules = load_rules()
-	all = node_mod.apply_rules(all, rules)
-	-- 再应用 opts 过滤
+	-- 规则已在各订阅 sync 时按订阅级配置应用；此处仅应用 opts 过滤
 	if opts.proto then
 		all = node_mod.filter(all, { proto = opts.proto })
 	end
