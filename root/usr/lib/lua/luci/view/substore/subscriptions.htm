@@ -42,7 +42,12 @@
 		local sub_link_base = prefix .. "?token=" .. sub_token .. "&target="
 %>
 	<tr class="cbi-section-table-row">
-		<td><%=it.name%></td>
+		<td>
+			<%=it.name%>
+			<% if it.cron_enable == true or it.cron_enable == "1" then %>
+			<div class="cbi-value-description">定时: <%=luci.util.pcdata(it.cron_time or "")%></div>
+			<% end %>
+		</td>
 		<td class="cbi-value-description" style="word-break:break-all"><%=it.url%></td>
 		<td><%=it.node_count or 0%></td>
 		<td><%=it.last_update and os.date("%Y-%m-%d %H:%M", it.last_update) or "-"%></td>

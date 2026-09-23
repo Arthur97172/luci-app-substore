@@ -29,6 +29,25 @@ local function post_ok()
 	return http.formvalue("token") ~= nil
 end
 
+-- 从表单读取按订阅的定时更新字段，校验 cron 表达式（防注入），返回 cron_enable, cron_time
+local function read_cron_fields()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	local cron_enable = http.formvalue("cron_enable") or "0"
+	local m = http.formvalue("cron_min") or "0"
+	local h = http.formvalue("cron_hour") or "3"
+	local dom = http.formvalue("cron_dom") or "*"
+	local mon = http.formvalue("cron_mon") or "*"
+	local dow = http.formvalue("cron_dow") or "*"
+	local cron_time = table.concat({m,h,dom,mon,dow}, " ")
+	if not core.cron_time_valid(cron_time) then
+		cron_enable = "0"
+		cron_time = ""
+	end
+	if cron_enable ~= "1" then cron_enable = "0" end
+	return cron_enable, cron_time
+end
+
 function action_create()
 	local http = require("luci.http")
 	local core = require("substore.core")
@@ -36,7 +55,9 @@ function action_create()
 		local name = (http.formvalue("name") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		local url = (http.formvalue("url") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		if name ~= "" and url ~= "" then
-			core.add(name, url)
+			local cron_enable, cron_time = read_cron_fields()
+			core.add(name, url, { cron_enable = cron_enable, cron_time = cron_time })
+			core.write_cron()
 		end
 	end
 	back_to_list()
@@ -50,7 +71,9 @@ function action_save()
 		local name = (http.formvalue("name") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		local url = (http.formvalue("url") or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		if name ~= "" and url ~= "" then
-			core.save_meta(id, { name = name, url = url })
+			local cron_enable, cron_time = read_cron_fields()
+			core.save_meta(id, { name = name, url = url, cron_enable = cron_enable, cron_time = cron_time })
+			core.write_cron()
 		end
 	end
 	back_to_list()
@@ -61,6 +84,7 @@ function action_delete()
 	local core = require("substore.core")
 	if post_ok() then
 		core.remove(http.formvalue("id") or "")
+		core.write_cron()
 	end
 	back_to_list()
 end
@@ -109,15 +133,6 @@ function action_settings_save()
 	local http = require("luci.http")
 	local uci = require("luci.model.uci").cursor()
 	if post_ok() then
-		local cron_enable = http.formvalue("cron_enable") or "0"
-		local m = http.formvalue("cron_min") or "0"
-		local h = http.formvalue("cron_hour") or "3"
-		local dom = http.formvalue("cron_dom") or "*"
-		local mon = http.formvalue("cron_mon") or "*"
-		local dow = http.formvalue("cron_dow") or "*"
-		local cron_time = table.concat({m,h,dom,mon,dow}, " ")
-		uci:set("substore", "settings", "cron_enable", cron_enable)
-		uci:set("substore", "settings", "cron_time", cron_time)
 		-- proto filter multi checkbox
 		local proto_list = {}
 		for _,p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do
@@ -129,11 +144,6 @@ function action_settings_save()
 		uci:set("substore", "default", "dedup", http.formvalue("dedup") or "0")
 		uci:set("substore", "default", "rename_map", http.formvalue("rename_map") or "")
 		uci:commit("substore")
-		if cron_enable=="1" and cron_time~="" then
-			os.execute("cat > /etc/cron.d/substore <<CRON\n# luci-app-substore cron\n"..cron_time.." root /usr/bin/substore-cron.sh >/tmp/substore-cron.log 2>&1\nCRON")
-		else
-			os.execute("rm -f /etc/cron.d/substore")
-		end
 	end
 	http.redirect(luci.dispatcher.build_url("admin", "services", "substore", "settings"))
 end

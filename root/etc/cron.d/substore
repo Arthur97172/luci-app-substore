@@ -1,3 +1,0 @@
-# luci-app-substore cron
-# Update all enabled subscriptions daily at 03:00
-0 3 * * * root /usr/bin/substore-cron.sh >/tmp/substore-cron.log 2>&1

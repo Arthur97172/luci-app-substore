@@ -1,10 +1,5 @@
 # LuCI configuration for luci-app-substore
 
-config globals 'settings'
-	option enabled '0'
-	option cron_enable '1'
-	option cron_time '0 3 * * *'
-
 config rules 'default'
 	option proto_filter ''
 	option keyword_include ''

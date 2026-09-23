@@ -1,24 +1,13 @@
 #!/bin/sh
 
+# 迁移：全局定时更新已废弃，改为按订阅配置
+# 清理旧版遗留的全局 cron 文件与 UCI 设置
+rm -f /etc/cron.d/substore
+
 uci -q batch <<-EOF
-	set substore.settings.enabled='0'
-	set substore.settings.cron_enable='1'
-	set substore.settings.cron_time='0 3 * * *'
+	delete substore.settings.cron_enable
+	delete substore.settings.cron_time
 	commit substore
 EOF
-
-# Generate cron file from UCI settings
-(
-	uci -q get substore.settings.cron_enable | grep -q '^1$' && {
-		time=$(uci -q get substore.settings.cron_time)
-		[ -z "$time" ] && time="0 3 * * *"
-		cat > /etc/cron.d/substore <<CRON
-# luci-app-substore cron
-$time root /usr/bin/substore-cron.sh >/tmp/substore-cron.log 2>&1
-CRON
-	} || {
-		rm -f /etc/cron.d/substore
-	}
-)
 
 exit 0

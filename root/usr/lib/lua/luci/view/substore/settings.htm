@@ -1,36 +1,11 @@
 <%+header%>
 <%
 	local uci = require("luci.model.uci").cursor()
-	local s = uci:get_all("substore", "settings") or {}
 	local r = uci:get_all("substore", "default") or {}
-	-- parse cron
-	local cron = s.cron_time or "0 3 * * *"
-	local m,h,dom,mon,dow = cron:match("^(%S+) (%S+) (%S+) (%S+) (%S+)$")
-	m = m or "0"; h = h or "3"; dom = dom or "*"; mon = mon or "*"; dow = dow or "*"
-	-- ensure cron_enable defaults to 1 if nil
-	if s.cron_enable == nil then s.cron_enable = "1" end
 %>
 <h2><%:Settings%></h2>
 <form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/settings_save')%>" class="cbi-map">
 	<input type="hidden" name="token" value="<%=token%>"/>
-	<div class="cbi-section">
-		<h3>通用</h3>
-		<div class="cbi-value">
-			<label>启用定时更新</label>
-			<input type="checkbox" name="cron_enable" value="1" <%=s.cron_enable=="1" and "checked" or ""%>/>
-			<input type="hidden" name="cron_enable_hidden" value="0"/>
-		</div>
-		<div class="cbi-value">
-			<label>定时更新时间</label>
-			<div style="display:flex;gap:0.5em">
-				<select name="cron_min"><% for i=0,59 do %><option value="<%=i%>" <%=tonumber(m)==i and "selected" or ""%>><%=i%></option><% end %></select> 分钟
-				<select name="cron_hour"><% for i=0,23 do %><option value="<%=i%>" <%=tonumber(h)==i and "selected" or ""%>><%=i%></option><% end %></select> 小时
-				<select name="cron_dom"><% for _,v in ipairs({"*","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31"}) do %><option value="<%=v%>" <%=dom==v and "selected" or ""%>><%=v%></option><% end %></select> 日
-				<select name="cron_mon"><% for _,v in ipairs({"*","1","2","3","4","5","6","7","8","9","10","11","12"}) do %><option value="<%=v%>" <%=mon==v and "selected" or ""%>><%=v%></option><% end %></select> 月
-				<select name="cron_dow"><% for _,v in ipairs({"*","0","1","2","3","4","5","6"}) do %><option value="<%=v%>" <%=dow==v and "selected" or ""%>><%=v%></option><% end %></select> 周
-			</div>
-		</div>
-	</div>
 	<div class="cbi-section">
 		<h3>规则</h3>
 		<div class="cbi-value">

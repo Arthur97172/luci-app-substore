@@ -11,6 +11,7 @@ M.version = "0.1.0"
 M.DATA_DIR = "/etc/substore"
 M.LIST_FILE = M.DATA_DIR .. "/subscriptions.json"
 M.NODES_DIR = M.DATA_DIR .. "/nodes"
+M.CRON_FILE = "/etc/cron.d/substore"
 
 M.MAX_SIZE = 10 * 1024 * 1024 -- 10MB
 M.TIMEOUT = 20
@@ -64,17 +65,22 @@ function M.get(id)
 	return m
 end
 
-function M.add(name, url)
+function M.add(name, url, opts)
 	name = util.trim(name or "")
 	url = util.trim(url or "")
+	opts = opts or {}
 	if name == "" or url == "" then return nil, "名称/URL 不能为空" end
 	local seq, items = load()
 	seq = seq + 1
 	local id = string.format("s%08x", seq)
+	local cron_time = util.trim(opts.cron_time or "")
+	if not M.cron_time_valid(cron_time) then cron_time = "" end
 	items[id] = {
 		name = name, url = url, enabled = true,
 		node_count = 0, last_update = nil, error = "", format = "",
 		token = util.rnd_hex(16),
+		cron_enable = (opts.cron_enable == true or opts.cron_enable == "1") and cron_time ~= "",
+		cron_time = cron_time,
 	}
 	if not save(seq, items) then return nil, "写入失败" end
 	return id
@@ -239,6 +245,35 @@ function M.merge(ids, opts)
 		all = node_mod.sort(all, opts.sort, opts.desc)
 	end
 	return all
+end
+
+-- 校验 cron 表达式：5 个字段，每个为数字或 *，防 cron 文件命令注入
+function M.cron_time_valid(ct)
+	if type(ct) ~= "string" then return false end
+	local fields = {}
+	for f in ct:gmatch("%S+") do fields[#fields + 1] = f end
+	if #fields ~= 5 then return false end
+	for _, f in ipairs(fields) do
+		if f ~= "*" and not f:match("^%d+$") then return false end
+	end
+	return true
+end
+
+-- 依据各订阅的 cron 设置生成 /etc/cron.d/substore；无启用项则移除该文件
+function M.write_cron()
+	local lines = { "# luci-app-substore cron (per-subscription)" }
+	for _, it in ipairs(M.list()) do
+		local en = (it.cron_enable == true or it.cron_enable == "1")
+		local ct = util.trim(it.cron_time or "")
+		if en and M.cron_time_valid(ct) then
+			lines[#lines + 1] = ct .. " root /usr/bin/substore-cron.sh " .. it.id .. " >/tmp/substore-cron.log 2>&1"
+		end
+	end
+	if #lines == 1 then
+		os.remove(M.CRON_FILE)
+		return true
+	end
+	return util.atomic_write(M.CRON_FILE, table.concat(lines, "\n") .. "\n")
 end
 
 return M

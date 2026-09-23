@@ -47,9 +47,6 @@ define Package/luci-app-substore/install
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
 	$(INSTALL_BIN) ./root/etc/uci-defaults/99-substore $(1)/etc/uci-defaults/99-substore
 
-	$(INSTALL_DIR) $(1)/etc/cron.d
-	$(INSTALL_CONF) ./root/etc/cron.d/substore $(1)/etc/cron.d/substore
-
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) ./root/usr/bin/substore-cron.sh $(1)/usr/bin/substore-cron.sh
 
