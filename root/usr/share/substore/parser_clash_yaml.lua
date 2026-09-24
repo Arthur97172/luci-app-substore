@@ -100,9 +100,15 @@ local function parse_yaml(content)
 			pos = pos + 1
 
 			local m = nil
-			local k, v = dash:match("^([^:]+):%s*(.*)$")
-			if k and v ~= "" then
-				m = { [k:gsub("%s*$", "")] = scalar(v) }
+			-- 流式 JSON 对象：- {"name":"...","type":"vmess",...}（机场 clash 配置常见写法）
+			if dash:sub(1, 1) == "{" then
+				local obj = util.json_decode(dash)
+				if type(obj) == "table" then m = obj end
+			else
+				local k, v = dash:match("^([^:]+):%s*(.*)$")
+				if k and v ~= "" then
+					m = { [k:gsub("%s*$", "")] = scalar(v) }
+				end
 			end
 
 			if pos <= n_items and items[pos].ind > it.ind then
@@ -158,6 +164,12 @@ local function map_clash_node(p)
 	if p.alterId then n.alterId = tonumber(p.alterId) end
 	if p.security then n.security = p.security end
 	if p.flow then n.flow = p.flow end
+	-- ws-opts（Clash 的 ws 传输参数）映射到统一模型的 path / host
+	if type(p["ws-opts"]) == "table" then
+		if p["ws-opts"].path then n.path = p["ws-opts"].path end
+		local wh = p["ws-opts"].headers
+		if type(wh) == "table" and wh.Host then n.host = wh.Host end
+	end
 
 	-- 保留其余字段（wireguard 的 private-key、peer-public-key 等）
 	for k, v in pairs(p) do

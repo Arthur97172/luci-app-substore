@@ -190,6 +190,37 @@ local nodes2 = parser.parse(clash_yaml_groups)
 check("groups parse nodes", nodes2 and #nodes2 == 1)
 check("groups parse name", nodes2 and nodes2[1].name == "Node1")
 
+-- ---------- 流式 JSON 节点（机场 clash 配置常见写法）----------
+local clash_yaml_flow = [[
+proxies:
+  - {"name":"V1-FlowVMess","type":"vmess","server":"a.cdn.node.example.com","port":30849,"uuid":"u-1","alterId":0,"cipher":"auto","udp":true,"tags":"hk","network":"ws","ws-opts":{"path":"/009c.x.m3u8","headers":{"Host":"edge.example.com"}},"skip-cert-verify":false}
+  - {"name":"V1-FlowSSR","type":"ssr","server":"b.cdn.node.example.com","port":30800,"cipher":"chacha20-ietf","password":"pwd","protocol":"auth_aes128_sha1","protocol-param":"174188:MUQuUs","obfs":"tls1.2_ticket_auth","obfs-param":"cdn.com","udp":true,"tags":"jp"}
+]]
+
+local fnodes = parser.parse(clash_yaml_flow)
+check("flow node count", fnodes and #fnodes == 2)
+
+if fnodes and #fnodes >= 1 then
+	local f1 = fnodes[1]
+	check("flow vmess proto", f1.proto == "vmess")
+	check("flow vmess name", f1.name == "V1-FlowVMess")
+	check("flow vmess server", f1.server == "a.cdn.node.example.com")
+	check("flow vmess port", f1.port == 30849)
+	check("flow vmess uuid", f1.uuid == "u-1")
+	check("flow vmess net", f1.net == "ws")
+	check("flow vmess path", f1.path == "/009c.x.m3u8")
+	check("flow vmess host", f1.host == "edge.example.com")
+end
+
+if fnodes and #fnodes >= 2 then
+	local f2 = fnodes[2]
+	check("flow ssr proto", f2.proto == "ssr")
+	check("flow ssr server", f2.server == "b.cdn.node.example.com")
+	check("flow ssr cipher", f2.method == "chacha20-ietf")
+	check("flow ssr protocol", f2.protocol == "auth_aes128_sha1")
+	check("flow ssr obfs", f2.obfs == "tls1.2_ticket_auth")
+end
+
 -- ---------- 结果 ----------
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)
