@@ -17,6 +17,8 @@
 - 每个订阅的剩余流量 / 剩余时长，从 `subscription-userinfo` 响应头解析（仅在编辑页显示）
 - **订阅代理**：通过 `http://` / `https://` / `socks4` / `socks5` / `socks5h` 代理下载订阅，
   用于订阅源直连失败时
+- **组合订阅**：勾选任意子集的现有订阅（可叠加关键词包含 / 排除、去重规则）合并成一个组合，
+  拥有独立名称、token 与订阅链接；源订阅更新后组合自动重算
 
 **输入解析**
 - 订阅格式：URI 列表、Base64、JSON、Clash YAML、sing-box JSON、V2Ray / Xray JSON、
@@ -52,18 +54,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `1.0.0-r1`）。
+> （当前 `1.0.0-r2`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-1.0.0-r1.ipk
+opkg install luci-app-substore-1.0.0-r2.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-1.0.0-r1.apk
+apk add --allow-untrusted luci-app-substore-1.0.0-r2.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。

@@ -17,6 +17,10 @@ group them, then re-emit them in a format your client can consume.
 - **Subscription proxy**: download the subscription through an
   `http://` / `https://` / `socks4` / `socks5` / `socks5h` proxy — useful when the
   source is unreachable directly
+- **Combination subscription**: merge an arbitrary subset of existing subscriptions
+  (optionally with keyword include / exclude and dedup rules) into one combination that
+  has its own name, token and subscription link; combinations are recomputed automatically
+  when a source updates
 
 **Input parsing**
 - Subscription formats: URI lists, Base64, JSON, Clash YAML, sing-box JSON,
@@ -55,18 +59,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `1.0.0-r1`).
+> [Makefile](Makefile) (currently `1.0.0-r2`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-1.0.0-r1.ipk
+opkg install luci-app-substore-1.0.0-r2.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-1.0.0-r1.apk
+apk add --allow-untrusted luci-app-substore-1.0.0-r2.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.

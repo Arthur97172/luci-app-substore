@@ -141,3 +141,16 @@ msgstr "延迟"
 
 msgid "URL Test"
 msgstr "URL 测试"
+
+# 组合订阅
+msgid "Add combination"
+msgstr "添加组合订阅"
+
+msgid "Edit combination"
+msgstr "编辑组合订阅"
+
+msgid "Combination"
+msgstr "组合"
+
+msgid "Source subscriptions"
+msgstr "来源订阅"

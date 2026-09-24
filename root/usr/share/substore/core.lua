@@ -197,6 +197,13 @@ function M.sync(id)
 	log("Sync start id="..tostring(id))
 	local meta = M.get(id)
 	if not meta then log("Sync fail: subscription not found"); return nil, "订阅不存在" end
+	-- 组合订阅：无下载源，直接重算合并节点
+	if M.is_combo(meta) then
+		log("Sync combo refresh")
+		local cnt, cerr = M.combo_refresh(id)
+		if not cnt then log("Combo refresh fail: " .. tostring(cerr)) end
+		return cnt, cerr
+	end
 	if not meta.url or meta.url == "" then log("Sync fail: no URL"); return nil, "无订阅 URL" end
 
 	-- 订阅代理：开启且代理地址有效时，通过代理下载订阅
@@ -241,6 +248,8 @@ function M.sync(id)
 		upload = ui and ui.upload, download = ui and ui.download, total = ui and ui.total, expire = ui and ui.expire,
 	})
 	if not ok then return nil, "更新状态失败" end
+	-- 源订阅更新后，刷新引用它的组合订阅
+	M.refresh_combos(id)
 	return #nodes
 end
 
@@ -257,6 +266,118 @@ function M.apply_rules(nodes, meta)
 		rename_map = meta.rename_map or "",
 	}
 	return node_mod.apply_rules(nodes, rules)
+end
+
+-- ---------- 组合订阅（combo） ----------
+
+-- 判断是否为组合订阅
+function M.is_combo(meta)
+	return meta ~= nil and (meta.combo == true or type(meta.sources) == "table")
+end
+
+-- 物化组合节点：按 sources 顺序合并各源节点，再应用组合自身的规则（复用 per-sub 规则字段）
+function M.combo_nodes(meta)
+	if type(meta) ~= "table" then return {} end
+	local srcs = type(meta.sources) == "table" and meta.sources or {}
+	local merged = {}
+	for _, sid in ipairs(srcs) do
+		local ns = M.read_nodes(sid)
+		for _, n in ipairs(ns) do merged[#merged + 1] = n end
+	end
+	return M.apply_rules(merged, meta)
+end
+
+-- 重新计算组合节点并落盘，更新状态。成功返回 node_count，失败返回 nil, err
+function M.combo_refresh(id)
+	if not id_is_valid(id) then return nil, "非法 ID" end
+	local meta = M.get(id)
+	if not meta then return nil, "订阅不存在" end
+	local srcs = type(meta.sources) == "table" and meta.sources or {}
+	if #srcs == 0 then
+		M.save_meta(id, { error = "请选择至少一个订阅", node_count = 0, last_update = os.time() })
+		return nil, "请选择至少一个订阅"
+	end
+	local nodes = M.combo_nodes(meta)
+	if not M.write_nodes(id, nodes) then
+		M.save_meta(id, { error = "写入节点数据失败", last_update = os.time() })
+		return nil, "写入节点数据失败"
+	end
+	M.save_meta(id, { node_count = #nodes, error = "", last_update = os.time() })
+	return #nodes
+end
+
+-- 源订阅更新后刷新所有引用它的组合，避免组合停留旧数据
+function M.refresh_combos(src_id)
+	if not src_id then return end
+	for _, it in ipairs(M.list()) do
+		local srcs = type(it.sources) == "table" and it.sources or {}
+		for _, sid in ipairs(srcs) do
+			if sid == src_id then
+				M.combo_refresh(it.id)
+				break
+			end
+		end
+	end
+end
+
+-- 创建组合订阅（无 URL，cron/代理禁用）；成功后物化节点。返回 id 或 nil, err
+function M.add_combo(name, sources, opts)
+	name = util.trim(name or "")
+	opts = opts or {}
+	if name == "" then return nil, "名称不能为空" end
+	local srcs = {}
+	if type(sources) == "table" then
+		for _, s in ipairs(sources) do
+			s = util.trim(tostring(s or ""))
+			if s ~= "" and id_is_valid(s) then srcs[#srcs + 1] = s end
+		end
+	end
+	if #srcs == 0 then return nil, "请选择至少一个订阅" end
+	local seq, items = load()
+	seq = seq + 1
+	local id = string.format("s%08x", seq)
+	items[id] = {
+		name = name, url = "", enabled = true, combo = true, sources = srcs,
+		node_count = 0, last_update = nil, error = "", format = "",
+		token = util.rnd_hex(16),
+		proxy_enable = "0", proxy = "",
+		cron_enable = false, cron_time = "",
+		rules_enable = (opts.rules_enable == true or opts.rules_enable == "1") and true or false,
+		proto_filter = util.trim(opts.proto_filter or ""),
+		keyword_include = util.trim(opts.keyword_include or ""),
+		keyword_exclude = util.trim(opts.keyword_exclude or ""),
+		dedup = (opts.dedup == true or opts.dedup == "1") and "1" or "0",
+		rename_map = opts.rename_map or "",
+	}
+	if not save(seq, items) then return nil, "写入失败" end
+	M.combo_refresh(id)
+	return id
+end
+
+-- 编辑组合订阅：更新名称/来源/规则后重算物化节点。成功返回 node_count，失败返回 nil, err
+function M.save_combo(id, name, sources, opts)
+	if not id_is_valid(id) then return nil, "非法 ID" end
+	name = util.trim(name or "")
+	if name == "" then return nil, "名称不能为空" end
+	local srcs = {}
+	if type(sources) == "table" then
+		for _, s in ipairs(sources) do
+			s = util.trim(tostring(s or ""))
+			if s ~= "" and id_is_valid(s) and s ~= id then srcs[#srcs + 1] = s end
+		end
+	end
+	if #srcs == 0 then return nil, "请选择至少一个订阅" end
+	opts = opts or {}
+	M.save_meta(id, {
+		name = name, sources = srcs,
+		rules_enable = (opts.rules_enable == true or opts.rules_enable == "1") and true or false,
+		proto_filter = util.trim(opts.proto_filter or ""),
+		keyword_include = util.trim(opts.keyword_include or ""),
+		keyword_exclude = util.trim(opts.keyword_exclude or ""),
+		dedup = (opts.dedup == true or opts.dedup == "1") and "1" or "0",
+		rename_map = opts.rename_map or "",
+	})
+	return M.combo_refresh(id)
 end
 
 -- 合并多个订阅的节点
