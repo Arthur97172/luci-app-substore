@@ -50,9 +50,14 @@ function M.surge_line(n)
 		local pp = n.protocol_param or n["protocol-param"]
 		if op and op ~= "" then e[#e + 1] = "obfs-param=" .. op end
 		if pp and pp ~= "" then e[#e + 1] = "protocol-param=" .. pp end
-	elseif proto == "hysteria2" then
+	elseif proto == "hysteria2" or proto == "hysteria" then
 		e[#e + 1] = "password=" .. (n.password or "")
 		if n.sni then e[#e + 1] = "sni=" .. n.sni end
+	elseif proto == "tuic" then
+		e[#e + 1] = "username=" .. (n.uuid or "")
+		if n.password then e[#e + 1] = "password=" .. n.password end
+		if n.sni then e[#e + 1] = "sni=" .. n.sni end
+		if n.alpn then e[#e + 1] = "alpn=" .. n.alpn end
 	elseif proto == "socks5" or proto == "socks" then
 		if n.username then
 			e[#e + 1] = "username=" .. n.username
@@ -81,13 +86,21 @@ end
 -- supports_ssr：Loon / Egern 支持 SSR；Surge / Surfboard / SurgeMac 不支持，跳过 ssr 节点
 local function surge_config(nodes, group_name, supports_ssr)
 	local list = nodes or {}
-	if not supports_ssr then
-		local kept = {}
-		for _, n in ipairs(list) do
-			if (n.proto or ""):lower() ~= "ssr" then kept[#kept + 1] = n end
+	-- 过滤 Surge 家族无法用单行 [Proxy] 表达的协议：
+	--   ssr：仅 Loon / Egern 支持（supports_ssr），Surge/Surfboard/SurgeMac 丢
+	--   wireguard：Surge 需专用多段 [WireGuard] 配置，单行无法表达，统一丢弃（不输出损坏行）
+	local kept = {}
+	for _, n in ipairs(list) do
+		local p = (n.proto or ""):lower()
+		if p == "wireguard" then
+			-- drop
+		elseif not supports_ssr and p == "ssr" then
+			-- drop
+		else
+			kept[#kept + 1] = n
 		end
-		list = kept
 	end
+	list = kept
 	local out = {}
 	out[#out + 1] = "[Proxy]"
 	for _, n in ipairs(list) do

@@ -109,9 +109,12 @@ function M.to_outbound(n)
 		o.password = n.password or ""
 		if n.congestion_control then o.congestion_control = n.congestion_control end
 	elseif stype == "wireguard" then
-		if n.private_key then o.private_key = n.private_key end
-		if n.peer_public_key then o.peer_public_key = n.peer_public_key end
-		if n.preshared_key then o.preshared_key = n.preshared_key end
+		local pk = n["private-key"] or n.private_key
+		local ppk = n["peer-public-key"] or n.peer_public_key
+		local psk = n["preshared-key"] or n.preshared_key
+		if pk then o.private_key = pk end
+		if ppk then o.peer_public_key = ppk end
+		if psk then o.preshared_key = psk end
 		if n.mtu then o.mtu = tonumber(n.mtu) end
 	elseif stype == "socks" then
 		if n.username then o.username = n.username end

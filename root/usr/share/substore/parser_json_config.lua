@@ -7,16 +7,28 @@ local node = require("substore.node")
 
 local M = {}
 
--- 协议映射
+-- 协议映射（与 parser_clash_yaml 的 TYPE_MAP 保持一致）
 local proto_map = {
 	vmess = "vmess",
 	vless = "vless",
 	trojan = "trojan",
 	shadowsocks = "shadowsocks",
 	ss = "shadowsocks",
+	socks = "socks",
+	socks5 = "socks",
+	http = "http",
+	hysteria2 = "hysteria2",
+	hysteria = "hysteria",
+	tuic = "tuic",
+	wireguard = "wireguard",
+	ssr = "ssr",
 }
 
-local SUPPORTED = { vmess = true, vless = true, trojan = true, shadowsocks = true }
+local SUPPORTED = {
+	vmess = true, vless = true, trojan = true, shadowsocks = true,
+	hysteria2 = true, hysteria = true, tuic = true, wireguard = true,
+	socks = true, http = true, ssr = true,
+}
 
 -- ---------- Sing-box JSON 解析 ----------
 function M.parse_singbox_json(content)
@@ -49,6 +61,20 @@ function M.parse_singbox_json(content)
 						node_data.password = outbound.password
 					elseif proto == "shadowsocks" then
 						node_data.method = outbound.method
+						node_data.password = outbound.password
+					elseif proto == "hysteria2" or proto == "hysteria" then
+						node_data.password = outbound.password or outbound.auth_str or outbound.auth
+					elseif proto == "tuic" then
+						node_data.uuid = outbound.uuid
+						node_data.password = outbound.password
+						if outbound.congestion_control then node_data.congestion_control = outbound.congestion_control end
+					elseif proto == "wireguard" then
+						node_data["private-key"] = outbound["private-key"] or outbound.private_key
+						node_data["peer-public-key"] = outbound["peer-public-key"] or outbound.peer_public_key
+						node_data["preshared-key"] = outbound["preshared-key"] or outbound.preshared_key
+						if outbound.mtu then node_data.mtu = outbound.mtu end
+					elseif proto == "socks" or proto == "http" then
+						node_data.username = outbound.username
 						node_data.password = outbound.password
 					end
 
@@ -93,7 +119,7 @@ function M.parse_v2ray_json(content)
 			if proto and SUPPORTED[proto] then
 				local settings = outbound.settings
 				if type(settings) == "table" then
-					local server, port, uuid, password, method, flow
+					local server, port, uuid, password, method, flow, username
 
 					if proto == "vmess" or proto == "vless" then
 						local vnext = settings.vnext
@@ -122,6 +148,16 @@ function M.parse_v2ray_json(content)
 							method = servers[1].method
 							password = servers[1].password
 						end
+					elseif proto == "socks" or proto == "http" then
+						local servers = settings.servers
+						if type(servers) == "table" and #servers > 0 then
+							server = servers[1].address
+							port = servers[1].port
+							if type(servers[1].users) == "table" and #servers[1].users > 0 then
+								username = servers[1].users[1].user
+								password = servers[1].users[1].pass
+							end
+						end
 					end
 
 					if server and port then
@@ -134,6 +170,7 @@ function M.parse_v2ray_json(content)
 							password = password,
 							method = method,
 							flow = flow,
+							username = username,
 						}
 
 						local ss2 = outbound.streamSettings
@@ -190,6 +227,26 @@ function M.parse_clash_json(content)
 					elseif proto == "shadowsocks" then
 						node_data.method = proxy.cipher or proxy.method
 						node_data.password = proxy.password
+					elseif proto == "hysteria2" or proto == "hysteria" then
+						node_data.password = proxy.password or proxy["auth-str"] or proxy.auth_str
+					elseif proto == "tuic" then
+						node_data.uuid = proxy.uuid
+						node_data.password = proxy.password
+					elseif proto == "wireguard" then
+						node_data["private-key"] = proxy["private-key"] or proxy.private_key
+						node_data["peer-public-key"] = proxy["peer-public-key"] or proxy.peer_public_key
+						node_data["preshared-key"] = proxy["preshared-key"] or proxy.preshared_key
+						if proxy.mtu then node_data.mtu = proxy.mtu end
+					elseif proto == "socks" or proto == "http" then
+						node_data.username = proxy.username
+						node_data.password = proxy.password
+					elseif proto == "ssr" then
+						node_data.method = proxy.cipher or proxy.method
+						node_data.password = proxy.password
+						node_data.protocol = proxy.protocol
+						node_data.obfs = proxy.obfs
+						if proxy["obfs-param"] then node_data.obfs_param = proxy["obfs-param"] end
+						if proxy["protocol-param"] then node_data.protocol_param = proxy["protocol-param"] end
 					end
 
 					if proxy.network then node_data.net = proxy.network end

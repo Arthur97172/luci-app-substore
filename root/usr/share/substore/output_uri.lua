@@ -111,6 +111,20 @@ function M.to_share_uri(n)
 		return M.to_ssr_uri(n)
 	end
 
+	if proto == "wireguard" then
+		-- wireguard://base64(json)#name —— 本项目自定义 scheme（wireguard 无统一 URI 标准）
+		local json = {
+			server = server,
+			port = tostring(port),
+			["private-key"] = n["private-key"] or n.private_key,
+			["peer-public-key"] = n["peer-public-key"] or n.peer_public_key,
+			["preshared-key"] = n["preshared-key"] or n.preshared_key,
+		}
+		if n.mtu then json.mtu = tostring(n.mtu) end
+		if n.name then json.name = n.name end
+		return "wireguard://" .. util.base64_encode(util.json_encode(json)) .. "#" .. name
+	end
+
 	return nil
 end
 

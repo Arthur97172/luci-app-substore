@@ -10,7 +10,10 @@ local parser_surge = require("substore.parser_surge")
 
 local M = {}
 
-local SUPPORTED = { vmess = true, vless = true, trojan = true, ss = true, ssr = true }
+local SUPPORTED = {
+	vmess = true, vless = true, trojan = true, ss = true, ssr = true,
+	hysteria2 = true, tuic = true, wireguard = true,
+}
 
 local function split_lines(content)
 	local out = {}
@@ -267,6 +270,97 @@ local function parse_vmess(uri, body)
 	return out
 end
 
+-- hysteria2://password@host:port/?sni=..&insecure=..#name
+local function parse_hysteria2(uri, body)
+	local name, rest = "", body
+	local hash = rest:find("#", 1, true)
+	if hash then
+		name = util.url_decode(rest:sub(hash + 1))
+		rest = rest:sub(1, hash - 1)
+	end
+	local query = {}
+	local qpos = rest:find("?", 1, true)
+	local hp = rest
+	if qpos then
+		hp = rest:sub(1, qpos - 1)
+		for k, v in rest:sub(qpos + 1):gmatch("([^&=]+)=([^&]*)") do
+			query[k] = util.url_decode(v)
+		end
+	end
+	local at = hp:find("@", 1, true)
+	if not at then return nil, "bad hysteria2" end
+	local password = util.url_decode(hp:sub(1, at - 1))
+	local host, port = util.split_hostport(hp:sub(at + 1))
+	local out = node.normalize({
+		proto = "hysteria2", name = name, server = host, port = tonumber(port),
+		password = password, raw = uri,
+	})
+	if query.sni then out.sni = query.sni end
+	if query.insecure ~= nil then out.insecure = query.insecure end
+	return out
+end
+
+-- tuic://uuid:password@host:port/?congestion_control=..&alpn=..&sni=..#name
+local function parse_tuic(uri, body)
+	local name, rest = "", body
+	local hash = rest:find("#", 1, true)
+	if hash then
+		name = util.url_decode(rest:sub(hash + 1))
+		rest = rest:sub(1, hash - 1)
+	end
+	local query = {}
+	local qpos = rest:find("?", 1, true)
+	local hp = rest
+	if qpos then
+		hp = rest:sub(1, qpos - 1)
+		for k, v in rest:sub(qpos + 1):gmatch("([^&=]+)=([^&]*)") do
+			query[k] = util.url_decode(v)
+		end
+	end
+	local at = hp:find("@", 1, true)
+	if not at then return nil, "bad tuic" end
+	local userinfo = util.url_decode(hp:sub(1, at - 1))
+	local uuid, password = "", userinfo
+	local cpos = userinfo:find(":", 1, true)
+	if cpos then
+		uuid = userinfo:sub(1, cpos - 1)
+		password = userinfo:sub(cpos + 1)
+	end
+	local host, port = util.split_hostport(hp:sub(at + 1))
+	local out = node.normalize({
+		proto = "tuic", name = name, server = host, port = tonumber(port),
+		uuid = uuid, password = password, raw = uri,
+	})
+	if query.congestion_control then out.congestion_control = query.congestion_control end
+	if query.alpn then out.alpn = query.alpn end
+	if query.sni then out.sni = query.sni end
+	return out
+end
+
+-- wireguard://base64(json)#name —— 本项目自定义 scheme（wireguard 无统一 URI 标准）
+local function parse_wireguard(uri, body)
+	local name, rest = "", body
+	local hash = rest:find("#", 1, true)
+	if hash then
+		name = util.url_decode(rest:sub(hash + 1))
+		rest = rest:sub(1, hash - 1)
+	end
+	local decoded = util.base64_decode(rest)
+	if decoded == "" then return nil, "bad wireguard" end
+	local j = util.json_decode(decoded)
+	if type(j) ~= "table" or not j.server or not j.port then return nil, "bad wireguard json" end
+	local out = node.normalize({
+		proto = "wireguard", name = name, server = j.server, port = tonumber(j.port),
+		["private-key"] = j["private-key"] or j.private_key,
+		["peer-public-key"] = j["peer-public-key"] or j.peer_public_key,
+		["preshared-key"] = j["preshared-key"] or j.preshared_key,
+		raw = uri,
+	})
+	if j.mtu then out.mtu = tonumber(j.mtu) end
+	if out.name == "" and j.name then out.name = j.name end
+	return out
+end
+
 -- 解析单条节点 URI，返回节点表或 nil, err
 function M.parse_uri(uri)
 	uri = util.trim(uri)
@@ -279,6 +373,9 @@ function M.parse_uri(uri)
 	if proto == "vless" then return parse_vless(uri, body) end
 	if proto == "trojan" then return parse_trojan(uri, body) end
 	if proto == "vmess" then return parse_vmess(uri, body) end
+	if proto == "hysteria2" then return parse_hysteria2(uri, body) end
+	if proto == "tuic" then return parse_tuic(uri, body) end
+	if proto == "wireguard" then return parse_wireguard(uri, body) end
 	return nil, "unsupported"
 end
 

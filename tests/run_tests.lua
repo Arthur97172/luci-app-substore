@@ -85,7 +85,7 @@ check("ss plugin", n6 and n6.plugin ~= nil and n6.server == "5.5.5.5")
 local n7 = parser.parse_uri("ss://" .. util.base64_encode("chacha20-ietf-poly1305:passw@6.6.6.6:443") .. "#SSW")
 check("ss b64-whole", n7 and n7.method == "chacha20-ietf-poly1305" and n7.password == "passw" and n7.server == "6.6.6.6" and n7.port == 443)
 
-check("unsupported proto", parser.parse_uri("hysteria2://x") == nil)
+check("unsupported proto", parser.parse_uri("foobar://x") == nil)
 
 -- ---------- parser.detect / parse ----------
 check("detect base64", parser.detect("aGVsbG8vZGVjb2RlZC1zc3Nzc3Nzc3M=") == "base64")
