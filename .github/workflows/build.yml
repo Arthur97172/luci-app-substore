@@ -1,0 +1,150 @@
+name: Build Package
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一时间只串行执行一个构建，避免并发时 tag 冲突
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ---------- 1. 检出源码 ----------
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          path: package-dir
+
+      # ---------- 2. 从 Makefile 读取版本号，作为 Release 的 tag / name ----------
+      - name: Read version from Makefile
+        id: version
+        run: |
+          VER=$(sed -n 's/^PKG_VERSION:=//p' package-dir/Makefile | tr -d '[:space:]')
+          REL=$(sed -n 's/^PKG_RELEASE:=//p' package-dir/Makefile | tr -d '[:space:]')
+          PKGVER="${VER}-r${REL}"
+          echo "PKGVER=${PKGVER}" >> "$GITHUB_OUTPUT"
+          echo "包版本：${PKGVER}"
+
+      # ---------- 3. 并行下载两个 SDK ----------
+      # 说明：本包 Makefile 为 PKGARCH:=all（纯 Lua + shell，无编译产物），
+      # 编译结果固定为 luci-app-substore_<版本>_all.ipk/.apk，架构字段为 all，
+      # 一份产物即可安装到 ARM / x86 / MIPS 等所有平台，无需按架构分别编译，
+      # 因此任意一个 target 的 SDK（此处用 x86/64）即可编译出通用包。
+      - name: Download SDKs (parallel)
+        run: |
+          SDK24_URL="https://downloads.openwrt.org/releases/24.10.8/targets/x86/64/openwrt-sdk-24.10.8-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          SDK25_URL="https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+          curl -sL --retry 5 --retry-delay 10 "$SDK24_URL" -o sdk24.tar.zst &
+          curl -sL --retry 5 --retry-delay 10 "$SDK25_URL" -o sdk25.tar.zst &
+          wait
+          echo "SDKs downloaded"
+
+      - name: Extract SDKs
+        run: |
+          tar -xf sdk24.tar.zst && mv openwrt-sdk-* sdk24
+          tar --zstd -xf sdk25.tar.zst && mv openwrt-sdk-* sdk25
+          echo "SDKs extracted"
+
+      # ============================================================
+      # 编译 .ipk (opkg) - SDK 24.10
+      # ============================================================
+      - name: Copy package to SDK 24.10
+        run: |
+          mkdir -p sdk24/package/luci-app-substore
+          cp -r package-dir/* sdk24/package/luci-app-substore/
+
+      - name: Install feeds (SDK 24.10)
+        run: |
+          cd sdk24
+          # 只保留 packages + luci 两个 feed，并把 full 克隆改为浅克隆加速
+          sed -e 's/^src-git-full /src-git /' feeds.conf.default \
+            | grep -E '^(src-git) (packages|luci) ' > feeds.conf
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          make defconfig
+
+      - name: Build .ipk
+        id: build_ipk
+        run: |
+          cd sdk24
+          make -j"$(nproc)" package/luci-app-substore/compile V=s
+        continue-on-error: true
+
+      - name: Save .ipk
+        run: |
+          mkdir -p artifacts
+          find sdk24/bin/ -name "luci-app-substore*.ipk" -exec cp {} artifacts/ \;
+          echo "=== .ipk ==="
+          ls -lh artifacts/*.ipk 2>/dev/null || echo "(no .ipk)"
+
+      # ============================================================
+      # 编译 .apk (APK) - SDK 25.12
+      # ============================================================
+      - name: Copy package to SDK 25.12
+        run: |
+          mkdir -p sdk25/package/luci-app-substore
+          cp -r package-dir/* sdk25/package/luci-app-substore/
+
+      - name: Install feeds (SDK 25.12)
+        run: |
+          cd sdk25
+          sed -e 's/^src-git-full /src-git /' feeds.conf.default \
+            | grep -E '^(src-git) (packages|luci) ' > feeds.conf
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          make defconfig
+
+      - name: Build .apk
+        id: build_apk
+        run: |
+          cd sdk25
+          make -j"$(nproc)" package/luci-app-substore/compile V=s
+        continue-on-error: true
+
+      - name: Save .apk
+        run: |
+          find sdk25/bin/ -name "luci-app-substore*.apk" -exec cp {} artifacts/ \;
+          echo "=== all artifacts ==="
+          ls -lh artifacts/
+
+      # ---------- 至少有一个产物才继续，避免上传空 Release ----------
+      - name: Verify artifacts
+        run: |
+          if ! ls artifacts/* 1>/dev/null 2>&1; then
+            echo "没有编译产物，终止构建"
+            exit 1
+          fi
+
+      # ---------- 删除同名旧 tag / Release（幂等），避免重跑时 tag 已存在 ----------
+      - name: Delete existing release/tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PKGVER="${{ steps.version.outputs.PKGVER }}"
+          gh release delete "$PKGVER" -y --cleanup-tag 2>/dev/null || true
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$PKGVER" 2>/dev/null || true
+
+      # ---------- 发布到 Release：tag / name 与 Makefile 版本一致 ----------
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.PKGVER }}
+          name: ${{ steps.version.outputs.PKGVER }}
+          body: |
+            自动编译的插件包（版本 ${{ steps.version.outputs.PKGVER }}）
+
+            - `.ipk`（opkg）— OpenWrt 24.10 及更早
+            - `.apk`（apk）— OpenWrt 25.12+
+            - 架构 `all`：纯 Lua 包，同一份产物同时支持 ARM / x86 / MIPS 等所有平台
+          files: artifacts/*
+          token: ${{ github.token }}
+          make_latest: true
