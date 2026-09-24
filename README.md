@@ -26,10 +26,8 @@
 **节点处理**
 - 浏览节点，按协议筛选、关键词搜索、排序
 - 每次更新时生效的按订阅规则：
-  - 协议过滤（只保留指定协议）
   - 关键词包含 / 排除（逗号分隔，支持多关键词）
   - 去重
-  - 重命名——精确 `旧=新`、正则 `pattern -> replacement`、模板 `{server}_{port}_{proto}`
 - 节点重命名、分组与打标签
 
 **网络探测**（节点页）
@@ -55,18 +53,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `0.2.0-r8`）。
+> （当前 `0.2.0-r9`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-0.2.0-r8.ipk
+opkg install luci-app-substore-0.2.0-r9.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-0.2.0-r8.apk
+apk add --allow-untrusted luci-app-substore-0.2.0-r9.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。

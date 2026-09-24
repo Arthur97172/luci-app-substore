@@ -26,6 +26,7 @@ end
 -- 检测订阅格式：uri / base64 / json / yaml / empty / unknown
 function M.detect(content)
 	content = util.trim(content or "")
+	content = content:gsub("^\239\187\191", "") -- 去除 UTF-8 BOM（部分机场/CDN 会在开头塞 BOM）
 	if content == "" then return "empty" end
 	local stripped = content:gsub("%s+", "")
 	if stripped:sub(1, 1) == "{" then return "json" end
@@ -44,10 +45,19 @@ function M.detect(content)
 		or stripped:find("ss://", 1, true) or content:find("://", 1, true) then
 		return "uri"
 	end
-	if stripped:match("^[A-Za-z0-9+/]*=*$") and #stripped > 10 then
-		-- 更严格：需含 = / + 之一，或长度为 4 的整数倍（避免把纯字母数字文本误判为 base64）
+	if stripped:match("^[A-Za-z0-9+/_%-]*=*$") and #stripped > 10 then
+		-- 更严格：需含 = / + - _ 之一，或长度为 4 的整数倍（避免把纯字母数字文本误判为 base64）
+		-- 兼容 base64url（- _ 无 padding）：URL-safe 变体也常见于机场订阅
 		if stripped:find("=", 1, true) or stripped:find("/", 1, true)
-			or stripped:find("+", 1, true) or #stripped % 4 == 0 then
+			or stripped:find("+", 1, true) or stripped:find("-", 1, true)
+			or stripped:find("_", 1, true) or #stripped % 4 == 0 then
+			return "base64"
+		end
+		-- 纯字母数字且长度非 4 倍数：可能是去掉 padding 的 base64url，尝试解码校验内容
+		local decoded = util.base64_url_decode(stripped)
+		if decoded ~= "" and (decoded:find("vmess://", 1, true) or decoded:find("vless://", 1, true)
+			or decoded:find("trojan://", 1, true) or decoded:find("ss://", 1, true)
+			or decoded:find("ssr://", 1, true)) then
 			return "base64"
 		end
 	end
@@ -255,7 +265,7 @@ local function parse_vmess(uri, body)
 		return out
 	end
 	-- 经典格式：vmess://base64(json)
-	local decoded = util.base64_decode(rest)
+	local decoded = util.base64_url_decode(rest)
 	if decoded == "" then return nil, "bad vmess b64" end
 	local j = util.json_decode(decoded)
 	if type(j) ~= "table" or not j.add then return nil, "bad vmess json" end
@@ -638,7 +648,8 @@ function M.parse(content)
 	if format == "uri" then
 		return { nodes = parse_lines(split_lines(content)), format = "uri" }
 	elseif format == "base64" then
-		local decoded = util.base64_decode(content)
+		-- 兼容标准 base64 与 base64url（- _ 无 padding）：base64_url_decode 两者皆可
+		local decoded = util.base64_url_decode(content)
 		if decoded == "" then return nil, "Base64 解码失败" end
 		return { nodes = parse_lines(split_lines(decoded)), format = "base64" }
 	elseif format == "json" then

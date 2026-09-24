@@ -28,11 +28,8 @@ group them, then re-emit them in a format your client can consume.
 **Node processing**
 - Browse nodes, filter by protocol, keyword search, sort
 - Per-subscription rules applied on every update:
-  - protocol filter (whitelist specific protocols)
   - keyword include / exclude (comma-separated, multi-keyword)
   - deduplication
-  - renaming — exact `旧=新`, regex `pattern -> replacement`, or template
-    `{server}_{port}_{proto}`
 - Rename, group and tag nodes
 
 **Network probing** (Nodes page)
@@ -59,18 +56,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `0.2.0-r8`).
+> [Makefile](Makefile) (currently `0.2.0-r9`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-0.2.0-r8.ipk
+opkg install luci-app-substore-0.2.0-r9.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-0.2.0-r8.apk
+apk add --allow-untrusted luci-app-substore-0.2.0-r9.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.

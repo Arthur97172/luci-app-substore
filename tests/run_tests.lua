@@ -104,6 +104,22 @@ local res2 = parser.parse(util.base64_encode(plain))
 check("parse base64 sub count", res2 and #res2.nodes == 2)
 check("parse base64 sub format", res2 and res2.format == "base64")
 
+-- base64url（URL-safe base64：- _ 替代 + /，无 padding）订阅
+check("detect base64url literal", parser.detect("eyJ-abc_def") == "base64")
+local vmess_link = "vmess://" .. util.base64_encode(util.json_encode({ v = "2", ps = "B64U", add = "9.9.9.9", port = "443", id = "u-1", aid = "0", net = "tcp" }))
+local b64u_sub = util.base64_url_encode(vmess_link .. "\nvless://uuid2@8.8.8.8:443#V")
+check("detect base64url sub", parser.detect(b64u_sub) == "base64")
+local b64u_res = parser.parse(b64u_sub)
+check("parse base64url count", b64u_res and #b64u_res.nodes == 2)
+check("parse base64url proto", b64u_res and b64u_res.nodes[1] and b64u_res.nodes[1].proto == "vmess")
+check("parse base64url server", b64u_res and b64u_res.nodes[1] and b64u_res.nodes[1].server == "9.9.9.9")
+
+-- UTF-8 BOM 前缀的订阅
+local bom_sub = "\239\187\191" .. util.base64_encode(vmess_link)
+check("detect BOM prefix", parser.detect(bom_sub) == "base64")
+local bom_res = parser.parse(bom_sub)
+check("parse BOM count", bom_res and #bom_res.nodes == 1)
+
 -- ---------- 结果 ----------
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)
