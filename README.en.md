@@ -30,7 +30,6 @@ group them, then re-emit them in a format your client can consume.
 - Per-subscription rules applied on every update:
   - keyword include / exclude (comma-separated, multi-keyword)
   - deduplication
-- Rename, group and tag nodes
 
 **Network probing** (Nodes page)
 - Ping (ICMP latency), TCPing (connect latency), URL test (HTTP latency)
