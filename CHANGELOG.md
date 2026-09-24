@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 组合订阅
+
+- 新增「组合订阅」（选择性合并多个订阅 + 组合订阅链接）
+  - core.lua：新增 add_combo / save_combo / combo_nodes / combo_refresh / refresh_combos / is_combo；
+    组合订阅物化为自身节点文件，无 URL、无 cron/代理，可叠加关键词包含/排除与去重规则；
+    sync 遇组合走重算而非下载，源订阅更新后自动 refresh_combos 重算依赖它的组合
+  - controller：新增 combo / combo_save 路由与 action_combo_save（复用 read_rules_fields）
+  - view：新增 combo.htm（名称 + 来源复选框 + 规则显隐）；subscriptions.htm 增「添加组合订阅」
+    按钮、组合行徽标与来源显示、编辑路由区分
+  - Makefile：安装 combo.htm；版本号 1.0.0 → 2.0.0（2.0.0-r1）
+  - i18n：po/zh-cn 新增 添加/编辑组合订阅、组合、来源订阅
+  - tests/core_combo_test.lua 新增（23 断言）
+
 ## [1.0.0] - 正式版
 
 - 修复 Clash 订阅（机场常见「流式 JSON 节点」写法）解析为 0 节点的问题

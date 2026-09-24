@@ -7,9 +7,9 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-substore
-# 版本约定：每次提交 PKG_RELEASE +1（1.0.0-r1 ~ r9）；
-# 达到 r10 时 PKG_VERSION 末位 +1（1.0.0 -> 1.0.1），PKG_RELEASE 重置为 1。
-PKG_VERSION:=1.0.0
+# 版本约定：每次提交 PKG_RELEASE +1（2.0.0-r1 ~ r9）；
+# 达到 r10 时 PKG_VERSION 末位 +1（2.0.0 -> 2.0.1），PKG_RELEASE 重置为 1。
+PKG_VERSION:=2.0.0
 PKG_RELEASE:=1
 
 LUCI_DEPENDS:=+luci-lua-runtime +luci-compat
@@ -64,6 +64,7 @@ define Package/luci-app-substore/install
 	$(INSTALL_DATA) ./root/usr/lib/lua/luci/view/substore/form.htm $(1)/usr/lib/lua/luci/view/substore/form.htm
 	$(INSTALL_DATA) ./root/usr/lib/lua/luci/view/substore/nodes.htm $(1)/usr/lib/lua/luci/view/substore/nodes.htm
 	$(INSTALL_DATA) ./root/usr/lib/lua/luci/view/substore/output.htm $(1)/usr/lib/lua/luci/view/substore/output.htm
+	$(INSTALL_DATA) ./root/usr/lib/lua/luci/view/substore/combo.htm $(1)/usr/lib/lua/luci/view/substore/combo.htm
 
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-substore.json $(1)/usr/share/luci/menu.d/luci-app-substore.json

@@ -5,6 +5,9 @@
 	<a class="cbi-button cbi-button-add" href="<%=luci.dispatcher.build_url('admin/services/substore/form')%>">
 		<%:Add subscription%>
 	</a>
+	<a class="cbi-button cbi-button-add" href="<%=luci.dispatcher.build_url('admin/services/substore/combo')%>">
+		<%:Add combination%>
+	</a>
 </div>
 
 <table class="cbi-section-table">
@@ -28,6 +31,8 @@
 		or (http_env.getenv("SERVER_NAME") and http_env.getenv("SERVER_NAME") .. ":" .. (http_env.getenv("SERVER_PORT") or "80"))
 		or "127.0.0.1"
 	local prefix = scheme .. "://" .. host .. base
+	local name_by_id = {}
+	for _, it2 in ipairs(items) do name_by_id[it2.id] = it2.name end
 	for _, it in ipairs(items) do
 		local status_color = "#808080"
 		local status_text = luci.i18n.translate("Pending")
@@ -43,12 +48,26 @@
 %>
 	<tr class="cbi-section-table-row">
 		<td>
+			<% if it.combo then %>
+			<span class="cbi-value-description" style="color:#0066aa">[<%:Combination%>]</span> <%=it.name%>
+			<% else %>
 			<%=it.name%>
+			<% end %>
 			<% if it.cron_enable == true or it.cron_enable == "1" then %>
 			<div class="cbi-value-description">定时: <%=luci.util.pcdata(it.cron_time or "")%></div>
 			<% end %>
 		</td>
-		<td class="cbi-value-description" style="word-break:break-all"><%=it.url%></td>
+		<td class="cbi-value-description" style="word-break:break-all"><%
+			if it.combo then
+				local names = {}
+				if type(it.sources) == "table" then
+					for _, sid in ipairs(it.sources) do names[#names + 1] = name_by_id[sid] or sid end
+				end
+				%><span style="color:#808080"><%=table.concat(names, " + ")%></span><%
+			else
+				%><%=it.url%><%
+			end
+		%></td>
 		<td><%=it.node_count or 0%></td>
 		<td><%=it.last_update and os.date("%Y-%m-%d %H:%M", it.last_update) or "-"%></td>
 		<td style="color:<%=status_color%>"><%=status_text%></td>
@@ -87,7 +106,11 @@
 				<input type="hidden" name="id" value="<%=it.id%>"/>
 				<input type="submit" class="cbi-button cbi-button-action" value="<%:Update%>"/>
 			</form>
+			<% if it.combo then %>
+			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/combo')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Edit%></a>
+			<% else %>
 			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/form')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Edit%></a>
+			<% end %>
 			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/nodes')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Nodes%></a>
 			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/output')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Output%></a>
 			<form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/delete')%>" style="display:inline"

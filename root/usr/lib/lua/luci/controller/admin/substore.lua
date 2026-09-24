@@ -13,8 +13,10 @@ function index()
 	entry({"admin", "services", "substore", "form"}, template("substore/form"), nil)
 	entry({"admin", "services", "substore", "nodes"}, template("substore/nodes"), nil)
 	entry({"admin", "services", "substore", "output"}, template("substore/output"), nil)
+	entry({"admin", "services", "substore", "combo"}, template("substore/combo"), nil)
 	entry({"admin", "services", "substore", "create"}, call("action_create"), nil)
 	entry({"admin", "services", "substore", "save"}, call("action_save"), nil)
+	entry({"admin", "services", "substore", "combo_save"}, call("action_combo_save"), nil)
 	entry({"admin", "services", "substore", "delete"}, call("action_delete"), nil)
 	entry({"admin", "services", "substore", "update"}, call("action_update"), nil)
 	entry({"admin", "services", "substore", "probe"}, call("action_probe"), nil)
@@ -123,6 +125,37 @@ function action_delete()
 	if post_ok() then
 		core.remove(http.formvalue("id") or "")
 		core.write_cron()
+	end
+	back_to_list()
+end
+
+-- 组合订阅保存：id 为空 → 新建，否则编辑；来源为 src_<id> 复选框 + 复用规则字段
+function action_combo_save()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	local util = require("substore.util")
+	if post_ok() then
+		local id = util.trim(http.formvalue("id") or "")
+		local name = (http.formvalue("name") or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		local sources = {}
+		for _, it in ipairs(core.list()) do
+			if not it.combo and http.formvalue("src_" .. it.id) then
+				sources[#sources + 1] = it.id
+			end
+		end
+		if name ~= "" then
+			local rules = read_rules_fields()
+			local o = {
+				rules_enable = rules.rules_enable, proto_filter = rules.proto_filter,
+				keyword_include = rules.keyword_include, keyword_exclude = rules.keyword_exclude,
+				dedup = rules.dedup,
+			}
+			if id == "" then
+				core.add_combo(name, sources, o)
+			else
+				core.save_combo(id, name, sources, o)
+			end
+		end
 	end
 	back_to_list()
 end
