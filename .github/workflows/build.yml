@@ -65,9 +65,9 @@ jobs:
       - name: Install feeds (SDK 24.10)
         run: |
           cd sdk24
-          # 只保留 packages + luci 两个 feed，并把 full 克隆改为浅克隆加速
-          sed -e 's/^src-git-full /src-git /' feeds.conf.default \
-            | grep -E '^(src-git) (packages|luci) ' > feeds.conf
+          # 必须保留 base feed：它提供 liblua/libucode/libnl-tiny/libubox 等 LuCI 编译依赖。
+          # 24.10 的 base 默认是 full 克隆（体积巨大），转浅克隆加速；其余 feed 已是浅克隆。
+          sed -e 's/^src-git-full /src-git /' feeds.conf.default > feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           make defconfig
@@ -97,8 +97,9 @@ jobs:
       - name: Install feeds (SDK 25.12)
         run: |
           cd sdk25
-          sed -e 's/^src-git-full /src-git /' feeds.conf.default \
-            | grep -E '^(src-git) (packages|luci) ' > feeds.conf
+          # 同上：base feed（--root=package）提供 LuCI 编译依赖，不能丢弃。
+          # 25.12 各 feed 均为浅克隆，sed 转换对 full 克隆生效（此处无 full 克隆，仅保险）。
+          sed -e 's/^src-git-full /src-git /' feeds.conf.default > feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           make defconfig
