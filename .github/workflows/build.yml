@@ -138,8 +138,8 @@ jobs:
           body: |
             自动编译的插件包（版本 ${{ steps.version.outputs.PKGVER }}）
 
-            - `.ipk`（opkg）— OpenWrt 24.10 及更早
-            - `.apk`（apk）— OpenWrt 25.12+
+            - `.ipk`（opkg）— OpenWrt/ImmortalWrt 24.10 及更早
+            - `.apk`（apk）— OpenWrt/ImmortalWrt 25.12+
             - 架构 `all`：纯 Lua 包，同一份产物同时支持 ARM / x86 / MIPS 等所有平台
           files: artifacts/*
           token: ${{ github.token }}
