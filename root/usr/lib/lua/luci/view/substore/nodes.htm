@@ -110,7 +110,7 @@ function runProbe(mode) {
 				if (server === (it.server || '') && port === String(it.port || '')) {
 					var cell = row.querySelector('.node-latency');
 					if (cell) {
-						cell.textContent = lat;
+						cell.innerHTML = lat;
 					}
 					break;
 				}

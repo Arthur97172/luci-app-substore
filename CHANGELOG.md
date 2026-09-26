@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 修复延迟显示 Bug
+
+- 修复「节点」页面延迟列显示异常问题
+  - 修正 innerHTML 与 textContent 的差异，确保失败时正确显示红色 "Fail" 文本
+  - 之前版本中由于使用 textContent，HTML 标签被显示为纯文本
+
 ## [2.1.0] - 网络探测优化
 
 - 优化「节点」页面的网络探测（Ping/TCPing/URL Test）显示
