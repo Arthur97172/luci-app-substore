@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 网络探测优化
+
+- 优化「节点」页面的网络探测（Ping/TCPing/URL Test）显示
+  - 在节点列表表格中新增「延迟」列，直接显示每个节点的测速结果
+  - 移除独立的探测结果弹窗，结果直接展示在表格内，查看更加直观
+  - 使用 data 属性进行节点匹配，提高稳定性
+
 ## [2.0.0] - 组合订阅
 
 - 新增「组合订阅」（选择性合并多个订阅 + 组合订阅链接）

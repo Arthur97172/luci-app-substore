@@ -56,29 +56,23 @@
 		<th><%:Protocol%></th>
 		<th><%:Server%></th>
 		<th><%:Port%></th>
+		<th><%:Latency%></th>
 	</tr>
 	<% for _, n in ipairs(nodes) do %>
-	<tr class="cbi-section-table-row">
+	<tr class="cbi-section-table-row" data-server="<%=n.server or ""%>" data-port="<%=n.port or ""%>">
 		<td><%=n.name or ""%></td>
 		<td><%=n.proto or ""%></td>
 		<td><%=n.server or ""%></td>
 		<td><%=n.port or ""%></td>
+		<td class="node-latency">-</td>
 	</tr>
 	<% end %>
 	<% if #nodes == 0 then %>
-	<tr class="cbi-section-table-row"><td colspan="4" style="text-align:center;color:#808080"><%:No nodes found.%></td></tr>
+	<tr class="cbi-section-table-row"><td colspan="5" style="text-align:center;color:#808080"><%:No nodes found.%></td></tr>
 	<% end %>
 </table>
 <div id="probe_area" style="display:none;margin:0.5em 0">
 	<div id="probe_summary" style="margin:0.5em 0;color:#808080"></div>
-	<table class="cbi-section-table">
-		<tr class="cbi-section-table-titles">
-			<th><%:Node%></th>
-			<th><%:Address%></th>
-			<th><%:Latency%></th>
-		</tr>
-		<tbody id="probe_body"></tbody>
-	</table>
 </div>
 
 <script>
@@ -88,13 +82,11 @@ function esc(s) {
 function runProbe(mode) {
 	var area = document.getElementById('probe_area');
 	var sum = document.getElementById('probe_summary');
-	var body = document.getElementById('probe_body');
 	var xhr = new XMLHttpRequest();
 	xhr.open('POST', '<%=luci.dispatcher.build_url('admin/services/substore/probe')%>', true);
 	xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-	area.style.display = '';
+	area.style.display = 'none';
 	sum.textContent = 'Testing...';
-	body.innerHTML = '';
 	xhr.onreadystatechange = function() {
 		if (xhr.readyState !== 4) return;
 		if (xhr.status !== 200) {
@@ -103,15 +95,27 @@ function runProbe(mode) {
 		}
 		var r;
 		try { r = JSON.parse(xhr.responseText); } catch (e) { sum.textContent = 'Parse error'; return; }
-		var rows = '';
+		// Update latency cells in the main table by matching server+port
 		for (var i = 0; i < r.results.length; i++) {
 			var it = r.results[i];
 			var lat = (it.latency === null || it.latency === undefined)
 				? '<span style="color:#cc0000">Fail</span>'
 				: Math.round(it.latency) + ' ms';
-			rows += '<tr class="cbi-section-table-row"><td>' + esc(it.name) + '</td><td>' + esc(it.server) + ':' + esc(String(it.port)) + '</td><td>' + lat + '</td></tr>';
+			// Find row by server and port
+			var rows = document.querySelectorAll('tr[data-server][data-port]');
+			for (var j = 0; j < rows.length; j++) {
+				var row = rows[j];
+				var server = row.getAttribute('data-server');
+				var port = row.getAttribute('data-port');
+				if (server === (it.server || '') && port === String(it.port || '')) {
+					var cell = row.querySelector('.node-latency');
+					if (cell) {
+						cell.textContent = lat;
+					}
+					break;
+				}
+			}
 		}
-		body.innerHTML = rows;
 		var avgTxt = (r.avg === null || r.avg === undefined) ? '' : ', avg ' + r.avg + ' ms';
 		sum.textContent = r.ok_count + ' / ' + r.total + ' ok' + avgTxt;
 	};
