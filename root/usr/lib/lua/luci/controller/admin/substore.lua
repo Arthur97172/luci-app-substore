@@ -53,7 +53,7 @@ end
 local function read_rules_fields()
 	local http = require("luci.http")
 	local proto_list = {}
-	for _, p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do
+	for _, p in ipairs({"vmess","vless","trojan","shadowsocks","ssr","hysteria2","tuic","hysteria","wireguard","socks"}) do
 		if http.formvalue("proto_filter_"..p) then proto_list[#proto_list+1]=p end
 	end
 	local rules_enable = http.formvalue("rules_enable") or "0"

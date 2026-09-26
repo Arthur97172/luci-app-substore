@@ -28,7 +28,7 @@
 		<label><%:Protocol%>:
 			<select name="proto">
 				<option value=""><%:All%></option>
-				<% for _, p in ipairs({"vmess","vless","trojan","shadowsocks","hysteria2","tuic"}) do %>
+				<% for _, p in ipairs({"vmess","vless","trojan","shadowsocks","ssr","hysteria2","tuic","hysteria","wireguard","socks"}) do %>
 					<option value="<%=p%>" <%=proto==p and "selected" or ""%>><%=p%></option>
 				<% end %>
 			</select>

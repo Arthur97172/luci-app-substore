@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.2] - 完善协议列表
+
+- 补齐节点列表和规则配置中缺失的协议选项
+  - nodes.htm：补齐 ssr、hysteria、wireguard、socks 四个协议
+  - substore.lua：补齐 ssr、hysteria、wireguard、socks 四个协议
+
 ## [2.1.1] - 修复延迟显示 Bug
 
 - 修复「节点」页面延迟列显示异常问题
