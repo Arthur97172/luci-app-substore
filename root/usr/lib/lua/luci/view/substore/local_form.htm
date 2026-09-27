@@ -95,13 +95,26 @@ var SUBSTORE_PROTOS = ["vmess","vless","trojan","shadowsocks","ssr","hysteria2",
 
 var PROTO_FIELDS = {
 	ssr: ["server","port","password","cipher","protocol","obfs","obfs-param","protocol-param","udp"],
-	vmess: ["server","port","uuid","alterId","cipher","net","path","host","sni","udp","skip-cert-verify"],
-	vless: ["server","port","uuid","security","net","path","host","sni","udp","skip-cert-verify"],
-	trojan: ["server","port","password","sni","net","path","host","udp","skip-cert-verify"],
-	shadowsocks: ["server","port","password","method","udp"],
-	hysteria2: ["server","port","password","sni","skip-cert-verify"],
+	vmess: ["server","port","uuid","alterId","cipher","net","headerType","path","host","sni","tls","udp","skip-cert-verify"],
+	vless: ["server","port","uuid","security","flow","net","headerType","path","host","sni","udp","skip-cert-verify"],
+	trojan: ["server","port","password","sni","net","headerType","path","host","udp","skip-cert-verify"],
+	shadowsocks: ["server","port","password","method","headerType","udp"],
+	hysteria2: ["server","port","password","sni","obfs","obfs-password","skip-cert-verify"],
 	tuic: ["server","port","uuid","password","sni","udp","skip-cert-verify"],
 	wireguard: ["server","port","private-key","peer-public-key","udp"]
+};
+
+// 枚举字段用下拉框；键为 "协议.字段" 优先，退化为通用 "字段"
+// 选项集合以模型/输出模块实际支持的值为准（见 output_singbox.build_transport / output_uri）
+var SELECT_FIELDS = {
+	"net": ["tcp","ws","h2","grpc"],
+	"headerType": ["none","http"],
+	"cipher": ["auto","aes-128-gcm","chacha20-poly1305","none","zero"],
+	"method": ["aes-128-gcm","aes-256-gcm","chacha20-ietf-poly1305","xchacha20-ietf-poly1305","aes-128-cfb","aes-256-cfb","rc4-md5","chacha20-ietf","2022-blake3-aes-128-gcm","2022-blake3-aes-256-gcm","2022-blake3-chacha20-poly1305"],
+	"security": ["none","tls","reality"],
+	"flow": ["","xtls-rprx-vision"],
+	"tls": ["","tls"],
+	"hysteria2.obfs": ["","salamander"]
 };
 
 // 布尔字段用下拉框：默认（不提交）/ true / false
@@ -117,12 +130,16 @@ var FIELD_LABELS = {
 	"method": "<%:Encryption method%>",
 	"security": "<%:Security%>",
 	"net": "<%:Network%>",
+	"headerType": "<%:Camouflage type%>",
+	"flow": "Flow",
 	"path": "<%:Path%>",
 	"host": "Host",
 	"sni": "SNI",
+	"tls": "TLS",
 	"protocol": "<%:Protocol%>",
 	"obfs": "<%:Obfs%>",
 	"obfs-param": "<%:Obfs param%>",
+	"obfs-password": "<%:Obfs password%>",
 	"protocol-param": "<%:Protocol param%>",
 	"udp": "UDP",
 	"skip-cert-verify": "<%:Skip cert verify%>",
@@ -130,10 +147,18 @@ var FIELD_LABELS = {
 	"peer-public-key": "<%:Peer public key%>"
 };
 
-function fieldRow(k) {
+function fieldRow(k, proto) {
 	var label = FIELD_LABELS[k] || k;
 	var input;
-	if (BOOL_FIELDS[k]) {
+	var opts = SELECT_FIELDS[proto + "." + k] || SELECT_FIELDS[k];
+	if (opts) {
+		input = '<select data-k="' + k + '">';
+		for (var i = 0; i < opts.length; i++) {
+			var v = opts[i];
+			input += '<option value="' + v + '">' + (v === "" ? "<%:Default%>" : v) + '</option>';
+		}
+		input += '</select>';
+	} else if (BOOL_FIELDS[k]) {
 		input = '<select data-k="' + k + '">' +
 			'<option value=""><%:Default%></option>' +
 			'<option value="true">true</option>' +
@@ -169,7 +194,7 @@ function renderFields(sel, data) {
 	var proto = sel.value;
 	var keys = PROTO_FIELDS[proto] || [];
 	var html = "";
-	for (var i = 0; i < keys.length; i++) html += fieldRow(keys[i]);
+	for (var i = 0; i < keys.length; i++) html += fieldRow(keys[i], proto);
 	fieldsDiv.innerHTML = html;
 	if (data) {
 		for (var j = 0; j < keys.length; j++) {

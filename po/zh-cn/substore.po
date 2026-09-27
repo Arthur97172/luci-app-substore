@@ -208,6 +208,12 @@ msgstr "路径"
 msgid "Obfs"
 msgstr "混淆"
 
+msgid "Obfs password"
+msgstr "混淆密码"
+
+msgid "Camouflage type"
+msgstr "伪装类型"
+
 msgid "Obfs param"
 msgstr "混淆参数"
 

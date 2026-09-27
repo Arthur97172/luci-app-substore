@@ -307,6 +307,9 @@ local function parse_hysteria2(uri, body)
 	})
 	if query.sni then out.sni = query.sni end
 	if query.insecure ~= nil then out.insecure = query.insecure end
+	-- 混淆参数回读，保证导出→导入回环不丢字段
+	if query.obfs then out.obfs = query.obfs end
+	if query["obfs-password"] then out["obfs-password"] = query["obfs-password"] end
 	return out
 end
 

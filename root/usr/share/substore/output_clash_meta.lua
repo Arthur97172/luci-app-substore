@@ -141,6 +141,14 @@ local function format_node(node)
 		if node.sni then
 			lines[#lines + 1] = "    sni: " .. esc_yaml(node.sni)
 		end
+		-- 混淆（salamander）
+		if node.obfs and node.obfs ~= "" and node.obfs ~= "plain" then
+			lines[#lines + 1] = "    obfs: " .. esc_yaml(node.obfs)
+			local opw = node["obfs-password"] or node.obfs_password
+			if opw and opw ~= "" then
+				lines[#lines + 1] = "    obfs-password: " .. esc_yaml(opw)
+			end
+		end
 	end
 
 	if ctype == "tuic" then

@@ -81,6 +81,12 @@ function M.to_share_uri(n)
 		local q = {}
 		if n.sni then q[#q + 1] = "sni=" .. url_encode(n.sni) end
 		if n.insecure ~= nil then q[#q + 1] = "insecure=" .. tostring(n.insecure) end
+		-- 混淆（salamander）：hy2 URI 标准参数 obfs / obfs-password
+		if n.obfs and n.obfs ~= "" and n.obfs ~= "plain" then
+			q[#q + 1] = "obfs=" .. url_encode(n.obfs)
+			local opw = n["obfs-password"] or n.obfs_password
+			if opw and opw ~= "" then q[#q + 1] = "obfs-password=" .. url_encode(opw) end
+		end
 		local suffix = #q > 0 and ("?" .. table.concat(q, "&")) or ""
 		return (proto == "hysteria2" and "hysteria2://" or "hysteria://")
 			.. url_encode(n.password or "") .. "@" .. server .. ":" .. tostring(port)

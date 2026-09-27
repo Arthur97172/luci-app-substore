@@ -85,5 +85,46 @@ check("auto name server:port", n5.name == "d.com:443")
 local res6, err6 = parser.parse_local("not json", "form")
 check("invalid json error", res6 == nil and err6 ~= nil)
 
+-- hy2 混淆：表单透传 → URI 输出 → URI 解析回环
+local res7 = parser.parse_local(util.json_encode({
+	{ type = "hysteria2", server = "hy2.com", port = "443", password = "pw",
+	  sni = "hy2.com", obfs = "salamander", ["obfs-password"] = "secret" },
+}), "form")
+local n7 = res7 and res7.nodes[1] or {}
+check("hy2 obfs passthrough", n7.obfs == "salamander")
+check("hy2 obfs-password passthrough", n7["obfs-password"] == "secret")
+
+local output_uri = require("substore.output_uri")
+local hy2_link = output_uri.to_share_uri and output_uri.to_share_uri(n7) or nil
+check("hy2 uri generated", type(hy2_link) == "string" and hy2_link:match("^hysteria2://") ~= nil)
+check("hy2 uri has obfs", hy2_link and hy2_link:find("obfs=salamander", 1, true) ~= nil)
+check("hy2 uri has obfs-password", hy2_link and hy2_link:find("obfs%-password=secret") ~= nil)
+
+-- URI 回读
+local res8 = hy2_link and parser.parse(hy2_link) or nil
+local n8 = res8 and res8.nodes and res8.nodes[1] or {}
+check("hy2 uri roundtrip obfs", n8.obfs == "salamander")
+check("hy2 uri roundtrip obfs-password", n8["obfs-password"] == "secret")
+
+-- clash_meta / sing-box 输出含混淆
+local output_clash = require("substore.output_clash_meta")
+local output_singbox = require("substore.output_singbox")
+local cm = output_clash.generate and output_clash.generate({ n7 }) or nil
+check("clash_meta hy2 obfs", type(cm) == "string" and cm:find("obfs: salamander", 1, true) ~= nil)
+check("clash_meta hy2 obfs-password", type(cm) == "string" and cm:find("obfs%-password: secret") ~= nil)
+local sb = output_singbox.to_outbound and output_singbox.to_outbound(n7) or nil
+check("singbox hy2 obfs type", type(sb) == "table" and sb.obfs and sb.obfs.type == "salamander")
+check("singbox hy2 obfs password", type(sb) == "table" and sb.obfs and sb.obfs.password == "secret")
+
+-- vmess headerType / tls 透传
+local res9 = parser.parse_local(util.json_encode({
+	{ type = "vmess", server = "v.com", port = "80", uuid = "u", net = "tcp",
+	  headerType = "http", host = "a.com", tls = "tls" },
+}), "form")
+local n9 = res9 and res9.nodes[1] or {}
+check("vmess headerType passthrough", n9.headerType == "http")
+check("vmess tls passthrough", n9.tls == "tls")
+check("vmess type key removed", n9.type == nil)
+
 print(string.format("%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

@@ -104,6 +104,10 @@ function M.to_outbound(n)
 		o.password = n.password or ""
 	elseif stype == "hysteria2" or stype == "hysteria" then
 		o.password = n.password or ""
+		-- 混淆（salamander）
+		if n.obfs and n.obfs ~= "" and n.obfs ~= "plain" then
+			o.obfs = { type = n.obfs, password = n["obfs-password"] or n.obfs_password or "" }
+		end
 	elseif stype == "tuic" then
 		o.uuid = n.uuid or ""
 		o.password = n.password or ""

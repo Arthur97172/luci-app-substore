@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.3-r4] - 表单导入枚举字段下拉化 + hysteria2 混淆闭环
+
+- 表单导入枚举字段改为下拉框（选项以模型/输出模块实际支持的值为准，对齐 PassWall 式交互）
+  - 传送方式 net：tcp/ws/h2/grpc；伪装类型 headerType：none/http（vmess/vless/trojan/shadowsocks 新增该字段）
+  - vmess 加密方式 cipher：auto/aes-128-gcm/chacha20-poly1305/none/zero；新增 TLS 开关（修复表单无法生成 TLS vmess 节点的缺口）
+  - vless 新增 flow（默认/xtls-rprx-vision）；security：none/tls/reality
+  - shadowsocks 加密方式 method：常用 11 种枚举
+  - hysteria2 新增混淆类型 obfs（无/salamander）+ 混淆密码 obfs-password
+  - 下拉选项按协议区分（hysteria2.obfs），不影响 ssr 的 obfs 自由文本
+- hysteria2 混淆导入导出闭环：output_uri 补 obfs/obfs-password 参数输出；output_clash_meta 补 obfs/obfs-password 行；output_singbox 补 obfs 对象；parser 的 hy2 URI 解析回读 obfs 参数
+- po/zh-cn 新增 伪装类型 / 混淆密码 翻译
+- tests/parser_local_form_test.lua 扩至 39 断言：hy2 混淆透传/URI 回环/双输出、vmess headerType/tls 透传
+
 ## [2.1.3-r3] - 表单导入字段中文化并扩充协议字段
 
 - 表单导入动态字段标签支持简体中文（server/port/password/cipher/net/path/sni 等，po/zh-cn 新增 13 条）
