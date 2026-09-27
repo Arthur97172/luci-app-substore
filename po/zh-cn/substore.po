@@ -154,3 +154,34 @@ msgstr "组合"
 
 msgid "Source subscriptions"
 msgstr "来源订阅"
+
+# 本地订阅
+msgid "Add subscription link"
+msgstr "添加订阅链接"
+
+msgid "Add local subscription"
+msgstr "添加本地订阅"
+
+msgid "Edit local subscription"
+msgstr "编辑本地订阅"
+
+msgid "Subscription info"
+msgstr "订阅信息"
+
+msgid "Text import"
+msgstr "文本导入"
+
+msgid "Form import"
+msgstr "表单导入"
+
+msgid "Local"
+msgstr "本地"
+
+msgid "Add node"
+msgstr "添加节点"
+
+msgid "Paste YAML/URI/JSON node list here. Mixed protocols supported."
+msgstr "在此粘贴 YAML/URI/JSON 节点列表，支持混合协议。"
+
+msgid "Add nodes via form below. Each node will be saved as JSON and parsed on save."
+msgstr "在下方表单中添加节点，保存时将序列化为 JSON 并解析。"
