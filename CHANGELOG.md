@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.3-r2] - 修复本地订阅表单导入跳回列表
+
+- 修复「添加本地订阅」页选择「表单导入」直接提交表单并跳回订阅列表的问题
+  - local_form.htm：模式切换下拉框原为 `onchange="this.form.submit()"`，改为纯 JS 切换显示，不再提交
+  - 移除重复的 hidden `local_mode` 字段；文本/表单两个 `content` 字段通过 disabled 互斥，保证只提交一个
+  - 提交前（onsubmit）表单模式将节点序列化为 JSON 写入隐藏 content 字段
+  - 编辑页初始内容由 `util.json_encode` 注入 JS（不再 pcdata 转义，避免破坏 JSON.parse）
+
 ## [2.1.3] - 新增本地订阅功能
 
 - 新增本地订阅：支持文本导入与表单导入双模式，本地订阅不走网络更新，Update 按钮禁用
