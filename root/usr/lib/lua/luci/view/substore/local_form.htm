@@ -94,19 +94,55 @@ var SUBSTORE_INIT_MODE = "<%=local_mode%>";
 var SUBSTORE_PROTOS = ["vmess","vless","trojan","shadowsocks","ssr","hysteria2","tuic","wireguard"];
 
 var PROTO_FIELDS = {
-	ssr: ["server","port","password","cipher","protocol","obfs","obfs-param","protocol-param"],
-	vmess: ["server","port","uuid","alterId","security","net","sni"],
-	vless: ["server","port","uuid","security","net","sni"],
-	trojan: ["server","port","password","sni"],
-	shadowsocks: ["server","port","password","method"],
-	hysteria2: ["server","port","password","sni"],
-	tuic: ["server","port","uuid","password","sni"],
-	wireguard: ["server","port","private-key","peer-public-key"]
+	ssr: ["server","port","password","cipher","protocol","obfs","obfs-param","protocol-param","udp"],
+	vmess: ["server","port","uuid","alterId","cipher","net","path","host","sni","udp","skip-cert-verify"],
+	vless: ["server","port","uuid","security","net","path","host","sni","udp","skip-cert-verify"],
+	trojan: ["server","port","password","sni","net","path","host","udp","skip-cert-verify"],
+	shadowsocks: ["server","port","password","method","udp"],
+	hysteria2: ["server","port","password","sni","skip-cert-verify"],
+	tuic: ["server","port","uuid","password","sni","udp","skip-cert-verify"],
+	wireguard: ["server","port","private-key","peer-public-key","udp"]
+};
+
+// 布尔字段用下拉框：默认（不提交）/ true / false
+var BOOL_FIELDS = { "udp": true, "skip-cert-verify": true };
+
+var FIELD_LABELS = {
+	"server": "<%:Server%>",
+	"port": "<%:Port%>",
+	"password": "<%:Password%>",
+	"uuid": "UUID",
+	"alterId": "Alter ID",
+	"cipher": "<%:Cipher%>",
+	"method": "<%:Encryption method%>",
+	"security": "<%:Security%>",
+	"net": "<%:Network%>",
+	"path": "<%:Path%>",
+	"host": "Host",
+	"sni": "SNI",
+	"protocol": "<%:Protocol%>",
+	"obfs": "<%:Obfs%>",
+	"obfs-param": "<%:Obfs param%>",
+	"protocol-param": "<%:Protocol param%>",
+	"udp": "UDP",
+	"skip-cert-verify": "<%:Skip cert verify%>",
+	"private-key": "<%:Private key%>",
+	"peer-public-key": "<%:Peer public key%>"
 };
 
 function fieldRow(k) {
-	return '<label style="display:inline-block;min-width:8em">' + k + '</label>' +
-		'<input type="text" data-k="' + k + '" style="width:50%"/><br/>';
+	var label = FIELD_LABELS[k] || k;
+	var input;
+	if (BOOL_FIELDS[k]) {
+		input = '<select data-k="' + k + '">' +
+			'<option value=""><%:Default%></option>' +
+			'<option value="true">true</option>' +
+			'<option value="false">false</option>' +
+			'</select>';
+	} else {
+		input = '<input type="text" data-k="' + k + '" style="width:50%"/>';
+	}
+	return '<label style="display:inline-block;min-width:10em">' + label + '</label>' + input + '<br/>';
 }
 
 function nodeTemplate(idx) {
@@ -138,7 +174,7 @@ function renderFields(sel, data) {
 	if (data) {
 		for (var j = 0; j < keys.length; j++) {
 			var el = fieldsDiv.querySelector('[data-k="' + keys[j] + '"]');
-			if (el && data[keys[j]] !== undefined && data[keys[j]] !== null) el.value = data[keys[j]];
+			if (el && data[keys[j]] !== undefined && data[keys[j]] !== null) el.value = String(data[keys[j]]);
 		}
 	}
 }

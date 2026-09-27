@@ -185,3 +185,43 @@ msgstr "在此粘贴 YAML/URI/JSON 节点列表，支持混合协议。"
 
 msgid "Add nodes via form below. Each node will be saved as JSON and parsed on save."
 msgstr "在下方表单中添加节点，保存时将序列化为 JSON 并解析。"
+
+# 表单导入字段标签
+msgid "Password"
+msgstr "密码"
+
+msgid "Cipher"
+msgstr "加密"
+
+msgid "Encryption method"
+msgstr "加密方式"
+
+msgid "Security"
+msgstr "安全设置"
+
+msgid "Network"
+msgstr "传输方式"
+
+msgid "Path"
+msgstr "路径"
+
+msgid "Obfs"
+msgstr "混淆"
+
+msgid "Obfs param"
+msgstr "混淆参数"
+
+msgid "Protocol param"
+msgstr "协议参数"
+
+msgid "Skip cert verify"
+msgstr "跳过证书验证"
+
+msgid "Private key"
+msgstr "私钥"
+
+msgid "Peer public key"
+msgstr "对端公钥"
+
+msgid "Default"
+msgstr "默认"

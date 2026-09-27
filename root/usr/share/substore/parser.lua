@@ -678,25 +678,33 @@ function M.parse_local(content, mode)
 		local nodes = {}
 		for _, item in ipairs(data) do
 			if type(item) == "table" then
-				-- 简单字段映射到统一节点模型
-				local proto = item.type or item.proto or "vmess"
-				local n = {
-					proto = proto,
-					name = item.name or (item.server or "") .. ":" .. tostring(item.port or ""),
-					server = item.server,
-					port = tonumber(item.port),
-					uuid = item.uuid,
-					password = item.password,
-					method = item.method or item.cipher,
-					protocol = item.protocol,
-					obfs = item.obfs,
-					obfs_param = item["obfs-param"] or item.obfs_param,
-					protocol_param = item["protocol-param"] or item.protocol_param,
-					cipher = item.cipher,
-					security = item.security,
-					net = item.net,
-					sni = item.sni,
-				}
+				-- 透传表单全部字段，仅做协议/别名/类型修正，避免白名单丢字段
+				local n = {}
+				for k, v in pairs(item) do n[k] = v end
+				n.proto = item.type or item.proto or "vmess"
+				n.type = nil
+				if n.net == nil and n.network ~= nil then n.net = n.network end
+				n.network = nil
+				n.port = tonumber(n.port) or n.port
+				if n.alterId ~= nil then n.alterId = tonumber(n.alterId) or n.alterId end
+				-- 字符串布尔转布尔值
+				for _, bk in ipairs({ "udp", "skip-cert-verify", "skip_cert_verify" }) do
+					if type(n[bk]) == "string" then
+						n[bk] = (n[bk] == "true" or n[bk] == "1")
+					end
+				end
+				if n["skip-cert-verify"] ~= nil and n.skip_cert_verify == nil then
+					n.skip_cert_verify = n["skip-cert-verify"]
+				end
+				-- shadowsocks 用 method；vmess/ssr 用 cipher，互为别名
+				if n.method == nil and n.cipher ~= nil then n.method = n.cipher end
+				if n.cipher == nil and n.method ~= nil then n.cipher = n.method end
+				-- SSR 参数别名
+				if n.obfs_param == nil and n["obfs-param"] ~= nil then n.obfs_param = n["obfs-param"] end
+				if n.protocol_param == nil and n["protocol-param"] ~= nil then n.protocol_param = n["protocol-param"] end
+				if n.name == nil or n.name == "" then
+					n.name = (n.server or "") .. ":" .. tostring(n.port or "")
+				end
 				nodes[#nodes + 1] = node_mod.normalize(n)
 			end
 		end

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.3-r3] - 表单导入字段中文化并扩充协议字段
+
+- 表单导入动态字段标签支持简体中文（server/port/password/cipher/net/path/sni 等，po/zh-cn 新增 13 条）
+- 扩充各协议字段集合，覆盖 Clash 风格节点常见字段：vmess/vless/trojan 新增 path、host、udp、skip-cert-verify；vmess 新增 alterId、cipher；ssr/shadowsocks/tuic/wireguard 新增 udp
+- udp / skip-cert-verify 改为下拉框（默认/true/false），不再手填文本
+- parser.lua `parse_local` 表单模式改为全字段透传 + 类型修正（port/alterId 转数字，udp/skip-cert-verify 字符串转布尔，network→net、method↔cipher、obfs-param/protocol-param 别名同步），不再因白名单丢字段
+
 ## [2.1.3-r2] - 修复本地订阅表单导入跳回列表
 
 - 修复「添加本地订阅」页选择「表单导入」直接提交表单并跳回订阅列表的问题
