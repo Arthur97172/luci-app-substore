@@ -59,18 +59,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.1.3-r5`).
+> [Makefile](Makefile) (currently `2.1.3-r6`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.1.3-r5.ipk
+opkg install luci-app-substore-2.1.3-r6.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.1.3-r5.apk
+apk add --allow-untrusted luci-app-substore-2.1.3-r6.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.

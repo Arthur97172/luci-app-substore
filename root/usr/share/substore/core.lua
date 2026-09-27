@@ -329,6 +329,31 @@ function M.apply_rules(nodes, meta)
 	return node_mod.apply_rules(nodes, rules)
 end
 
+-- ---------- 单节点编辑 ----------
+
+-- 表单管理的字段集合：合并时先从原节点清除，再用表单值覆盖，未出现在表单中的字段（raw/tags 等）保留
+local FORM_KEYS = {
+	name = true, group = true, server = true, port = true, password = true,
+	cipher = true, method = true, protocol = true, obfs = true,
+	["obfs-param"] = true, obfs_param = true, ["protocol-param"] = true, protocol_param = true,
+	udp = true, uuid = true, alterId = true, net = true, network = true,
+	headerType = true, path = true, host = true, sni = true, tls = true,
+	["skip-cert-verify"] = true, skip_cert_verify = true, security = true, flow = true,
+	["obfs-password"] = true, obfs_password = true,
+	["private-key"] = true, private_key = true, ["peer-public-key"] = true, peer_public_key = true,
+}
+
+-- 合并表单节点到原节点：表单字段整体替换（可清空），非表单字段保留
+function M.merge_form_node(orig, formnode)
+	local out = {}
+	for k, v in pairs(orig or {}) do out[k] = v end
+	for k in pairs(FORM_KEYS) do out[k] = nil end
+	for k, v in pairs(formnode or {}) do
+		if k ~= "type" then out[k] = v end
+	end
+	return out
+end
+
 -- ---------- 组合订阅（combo） ----------
 
 -- 判断是否为组合订阅

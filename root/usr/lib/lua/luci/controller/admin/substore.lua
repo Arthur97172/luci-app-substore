@@ -20,6 +20,10 @@ function index()
 	entry({"admin", "services", "substore", "local_create"}, call("action_local_create"), nil)
 	entry({"admin", "services", "substore", "local_save"}, call("action_local_save"), nil)
 	entry({"admin", "services", "substore", "combo_save"}, call("action_combo_save"), nil)
+	entry({"admin", "services", "substore", "node_edit"}, template("substore/node_edit"), nil)
+	entry({"admin", "services", "substore", "node_save"}, call("action_node_save"), nil)
+	entry({"admin", "services", "substore", "node_delete"}, call("action_node_delete"), nil)
+	entry({"admin", "services", "substore", "node_set_group"}, call("action_node_set_group"), nil)
 	entry({"admin", "services", "substore", "delete"}, call("action_delete"), nil)
 	entry({"admin", "services", "substore", "update"}, call("action_update"), nil)
 	entry({"admin", "services", "substore", "probe"}, call("action_probe"), nil)
@@ -177,6 +181,86 @@ function action_delete()
 		core.write_cron()
 	end
 	back_to_list()
+end
+
+-- 节点页返回链接：保留当前筛选参数
+local function back_to_nodes(http)
+	local id = http.formvalue("id") or ""
+	local qs = "?id=" .. luci.util.urlencode(id)
+	for _, k in ipairs({ "proto", "keyword", "group", "sort", "desc" }) do
+		local v = http.formvalue(k)
+		if v and v ~= "" then qs = qs .. "&" .. k .. "=" .. luci.util.urlencode(v) end
+	end
+	http.redirect(luci.dispatcher.build_url("admin", "services", "substore", "nodes") .. qs)
+end
+
+-- 单节点保存：表单 JSON 解析后经 merge_form_node 合并到原节点（保留 raw/tags 等非表单字段）
+function action_node_save()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	local parser = require("substore.parser")
+	if post_ok() then
+		local id = http.formvalue("id") or ""
+		local idx = tonumber(http.formvalue("idx") or "")
+		local content = http.formvalue("content") or ""
+		local nodes = core.read_nodes(id)
+		if idx and nodes[idx] and content ~= "" then
+			local res = parser.parse_local(content, "form")
+			local newn = res and res.nodes and res.nodes[1]
+			if newn then
+				nodes[idx] = core.merge_form_node(nodes[idx], newn)
+				if core.write_nodes(id, nodes) then
+					core.refresh_combos(id)
+				end
+			end
+		end
+	end
+	back_to_nodes(http)
+end
+
+-- 单节点删除
+function action_node_delete()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	if post_ok() then
+		local id = http.formvalue("id") or ""
+		local idx = tonumber(http.formvalue("idx") or "")
+		local nodes = core.read_nodes(id)
+		if idx and nodes[idx] then
+			table.remove(nodes, idx)
+			if core.write_nodes(id, nodes) then
+				core.save_meta(id, { node_count = #nodes })
+				core.refresh_combos(id)
+			end
+		end
+	end
+	back_to_nodes(http)
+end
+
+-- 单节点分组快速设置（XHR，JSON 响应）
+function action_node_set_group()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	local util = require("substore.util")
+	http.prepare_content("application/json")
+	if not post_ok() then
+		http.write(util.json_encode({ ok = false, err = "forbidden" }))
+		return
+	end
+	local id = http.formvalue("id") or ""
+	local idx = tonumber(http.formvalue("idx") or "")
+	local group = util.trim(http.formvalue("group") or "")
+	local nodes = core.read_nodes(id)
+	if not idx or not nodes[idx] then
+		http.write(util.json_encode({ ok = false, err = "node not found" }))
+		return
+	end
+	nodes[idx].group = group ~= "" and group or nil
+	if not core.write_nodes(id, nodes) then
+		http.write(util.json_encode({ ok = false, err = "write failed" }))
+		return
+	end
+	http.write(util.json_encode({ ok = true }))
 end
 
 -- combo save: id empty create else edit, sources from src_id checkboxes and reuse rules
