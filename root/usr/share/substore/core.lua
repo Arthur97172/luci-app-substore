@@ -89,7 +89,7 @@ function M.add(name, url, opts)
 		keyword_exclude = util.trim(opts.keyword_exclude or ""),
 		dedup = (opts.dedup == true or opts.dedup == "1") and "1" or "0",
 		rename_map = opts.rename_map or "",
-		local = false,
+		["local"] = false,
 		raw_content = "",
 		local_mode = "text",
 	}
@@ -118,7 +118,7 @@ function M.add_local(name, raw_content, local_mode, opts)
 		keyword_exclude = util.trim(opts.keyword_exclude or ""),
 		dedup = (opts.dedup == true or opts.dedup == "1") and "1" or "0",
 		rename_map = opts.rename_map or "",
-		local = true,
+		["local"] = true,
 		raw_content = raw_content,
 		local_mode = local_mode,
 	}
@@ -239,7 +239,7 @@ function M.sync(id)
 		return cnt, cerr
 	end
 	-- 本地订阅：直接解析 raw_content
-	if meta.local then
+	if meta["local"] then
 		log("Sync local subscription")
 		local content = meta.raw_content or ""
 		if content == "" then

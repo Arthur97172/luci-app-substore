@@ -23,7 +23,7 @@ function index()
 	entry({"admin", "services", "substore", "delete"}, call("action_delete"), nil)
 	entry({"admin", "services", "substore", "update"}, call("action_update"), nil)
 	entry({"admin", "services", "substore", "probe"}, call("action_probe"), nil)
-	-- 公开订阅下载端点（无登录态，靠随机 token 访问控制），供 Passwall/OpenClash 等客户端拉取
+	-- public download endpoint token based, no login, for Passwall OpenClash
 	entry({"substore", "download"}, call("action_download"), nil)
 end
 
@@ -33,7 +33,7 @@ local function post_ok()
 	return http.formvalue("token") ~= nil
 end
 
--- 从表单读取按订阅的定时更新字段，校验 cron 表达式（防注入），返回 cron_enable, cron_time
+-- read cron fields from form, validate cron expression, return cron_enable cron_time
 local function read_cron_fields()
 	local http = require("luci.http")
 	local core = require("substore.core")
@@ -52,7 +52,7 @@ local function read_cron_fields()
 	return cron_enable, cron_time
 end
 
--- 从表单读取订阅级规则字段，返回规则表
+-- read subscription level rules from form, return rules table
 local function read_rules_fields()
 	local http = require("luci.http")
 	local proto_list = {}
@@ -179,7 +179,7 @@ function action_delete()
 	back_to_list()
 end
 
--- 组合订阅保存：id 为空 → 新建，否则编辑；来源为 src_<id> 复选框 + 复用规则字段
+-- combo save: id empty create else edit, sources from src_id checkboxes and reuse rules
 function action_combo_save()
 	local http = require("luci.http")
 	local core = require("substore.core")
@@ -216,11 +216,11 @@ function action_update()
 	if post_ok() then
 		local id = http.formvalue("id") or ""
 		local meta = core.get(id)
-		if meta and meta.local then
-			-- 本地订阅不支持自动更新
+		if meta and meta["local"] then
+			-- local subscription does not support auto update
 			return
 		end
-		-- pcall 兜底：解析/写入异常不会让 LuCI 页面 500，错误落库后在列表页状态列展示
+		-- pcall fallback: parse or write error will not 500 the page, error saved to list status
 		local ok, err = pcall(function()
 			return core.sync(id)
 		end)
@@ -231,7 +231,7 @@ function action_update()
 	back_to_list()
 end
 
--- 节点探测端点：POST id + mode(ping/tcping/url) + proto + keyword，返回 JSON
+-- node probe endpoint: POST id + mode ping tcping url + proto + keyword, return JSON
 function action_probe()
 	local http = require("luci.http")
 	local core = require("substore.core")
