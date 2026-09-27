@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.3-r5] - 本地订阅表单全面接入系统语言
+
+- local_form.htm 规则区硬编码中文（启用规则/关键词包含/关键词排除/去重/提示语）改为 `<%:...%>` 可翻译字符串，随 OpenWrt 系统语言自动切换中英文
+- po/zh-cn 新增 Enable rules / Keyword include / Keyword exclude / Dedup 等 5 条
+- 至此 local_form.htm 页面无任何硬编码中文（剩余中文均为代码注释）
+- 说明：旧 form.htm（订阅链接表单）存在同样的硬编码中文存量问题，未在本次改动范围内
+
 ## [2.1.3-r4] - 表单导入枚举字段下拉化 + hysteria2 混淆闭环
 
 - 表单导入枚举字段改为下拉框（选项以模型/输出模块实际支持的值为准，对齐 PassWall 式交互）

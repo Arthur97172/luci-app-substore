@@ -231,3 +231,19 @@ msgstr "对端公钥"
 
 msgid "Default"
 msgstr "默认"
+
+# 规则区（本地订阅表单）
+msgid "Enable rules"
+msgstr "启用规则"
+
+msgid "When enabled, apply keyword include/exclude and dedup rules to nodes"
+msgstr "启用后，按关键词包含/排除、去重规则处理节点"
+
+msgid "Keyword include"
+msgstr "关键词包含"
+
+msgid "Keyword exclude"
+msgstr "关键词排除"
+
+msgid "Dedup"
+msgstr "去重"

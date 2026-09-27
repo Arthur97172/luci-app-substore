@@ -51,22 +51,22 @@
 			</div>
 		</div>
 		<div class="cbi-section-descr" style="margin:0.5em 0">
-			<label style="display:inline-block;min-width:10em">启用规则</label>
+			<label style="display:inline-block;min-width:10em"><%:Enable rules%></label>
 			<input type="checkbox" name="rules_enable" value="1" <%=rules_enabled and "checked" or ""%>
 				onchange="var r=document.getElementById('rules_row');if(r)r.style.display=this.checked?'block':'none';"/>
-			<span class="cbi-value-description">启用后，按关键词包含/排除、去重规则处理节点</span>
+			<span class="cbi-value-description"><%:When enabled, apply keyword include/exclude and dedup rules to nodes%></span>
 		</div>
 		<div id="rules_row" style="margin:0.5em 0;display:<%=rules_enabled and "block" or "none"%>">
 			<div class="cbi-section-descr" style="margin:0.25em 0">
-				<label style="display:inline-block;min-width:10em">关键词包含</label>
+				<label style="display:inline-block;min-width:10em"><%:Keyword include%></label>
 				<input type="text" name="keyword_include" value="<%=ki%>" style="width:60%"/>
 			</div>
 			<div class="cbi-section-descr" style="margin:0.25em 0">
-				<label style="display:inline-block;min-width:10em">关键词排除</label>
+				<label style="display:inline-block;min-width:10em"><%:Keyword exclude%></label>
 				<input type="text" name="keyword_exclude" value="<%=ke%>" style="width:60%"/>
 			</div>
 			<div class="cbi-section-descr" style="margin:0.25em 0">
-				<label style="display:inline-block;min-width:10em">去重</label>
+				<label style="display:inline-block;min-width:10em"><%:Dedup%></label>
 				<input type="checkbox" name="dedup" value="1" <%=dedup and "checked" or ""%>/>
 			</div>
 		</div>
