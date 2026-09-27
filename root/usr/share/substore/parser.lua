@@ -666,4 +666,44 @@ function M.parse(content)
 	return nil, "无法识别的订阅格式"
 end
 
+-- 本地订阅解析：支持文本模式和表单模式
+function M.parse_local(content, mode)
+	mode = mode or "text"
+	if not content or content == "" then return { nodes = {}, format = "empty" } end
+	if mode == "form" then
+		-- 表单模式：content 为 JSON 数组
+		local data = util.json_decode(content)
+		if type(data) ~= "table" then return nil, "表单数据解析失败" end
+		local node_mod = require("substore.node")
+		local nodes = {}
+		for _, item in ipairs(data) do
+			if type(item) == "table" then
+				-- 简单字段映射到统一节点模型
+				local proto = item.type or item.proto or "vmess"
+				local n = {
+					proto = proto,
+					name = item.name or (item.server or "") .. ":" .. tostring(item.port or ""),
+					server = item.server,
+					port = tonumber(item.port),
+					uuid = item.uuid,
+					password = item.password,
+					method = item.method or item.cipher,
+					protocol = item.protocol,
+					obfs = item.obfs,
+					obfs_param = item["obfs-param"] or item.obfs_param,
+					protocol_param = item["protocol-param"] or item.protocol_param,
+					cipher = item.cipher,
+					security = item.security,
+					net = item.net,
+					sni = item.sni,
+				}
+				nodes[#nodes + 1] = node_mod.normalize(n)
+			end
+		end
+		return { nodes = nodes, format = "local-form" }
+	end
+	-- 文本模式：使用通用解析
+	return M.parse(content)
+end
+
 return M

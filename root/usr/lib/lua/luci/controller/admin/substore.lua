@@ -11,11 +11,14 @@ function index()
 	entry({"admin", "services", "substore"}, alias("admin", "services", "substore", "list"), nil)
 	entry({"admin", "services", "substore", "list"}, template("substore/subscriptions"), _("Subscriptions"), 10)
 	entry({"admin", "services", "substore", "form"}, template("substore/form"), nil)
+	entry({"admin", "services", "substore", "localform"}, template("substore/local_form"), nil)
 	entry({"admin", "services", "substore", "nodes"}, template("substore/nodes"), nil)
 	entry({"admin", "services", "substore", "output"}, template("substore/output"), nil)
 	entry({"admin", "services", "substore", "combo"}, template("substore/combo"), nil)
 	entry({"admin", "services", "substore", "create"}, call("action_create"), nil)
 	entry({"admin", "services", "substore", "save"}, call("action_save"), nil)
+	entry({"admin", "services", "substore", "local_create"}, call("action_local_create"), nil)
+	entry({"admin", "services", "substore", "local_save"}, call("action_local_save"), nil)
 	entry({"admin", "services", "substore", "combo_save"}, call("action_combo_save"), nil)
 	entry({"admin", "services", "substore", "delete"}, call("action_delete"), nil)
 	entry({"admin", "services", "substore", "update"}, call("action_update"), nil)
@@ -119,6 +122,53 @@ function action_save()
 	back_to_list()
 end
 
+function action_local_create()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	if post_ok() then
+		local name = (http.formvalue("name") or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		local content = http.formvalue("content") or ""
+		local local_mode = http.formvalue("local_mode") or "text"
+		local rules = read_rules_fields()
+		if name ~= "" and content ~= "" then
+			core.add_local(name, content, local_mode, {
+				rules_enable = rules.rules_enable,
+				proto_filter = rules.proto_filter,
+				keyword_include = rules.keyword_include,
+				keyword_exclude = rules.keyword_exclude,
+				dedup = rules.dedup,
+			})
+		end
+	end
+	back_to_list()
+end
+
+function action_local_save()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	if post_ok() then
+		local id = http.formvalue("id") or ""
+		local name = (http.formvalue("name") or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		local content = http.formvalue("content") or ""
+		local local_mode = http.formvalue("local_mode") or "text"
+		local rules = read_rules_fields()
+		if id ~= "" and name ~= "" and content ~= "" then
+			core.save_meta(id, {
+				name = name,
+				raw_content = content,
+				local_mode = local_mode,
+				rules_enable = rules.rules_enable,
+				proto_filter = rules.proto_filter,
+				keyword_include = rules.keyword_include,
+				keyword_exclude = rules.keyword_exclude,
+				dedup = rules.dedup,
+			})
+			core.sync(id)
+		end
+	end
+	back_to_list()
+end
+
 function action_delete()
 	local http = require("luci.http")
 	local core = require("substore.core")
@@ -165,6 +215,11 @@ function action_update()
 	local core = require("substore.core")
 	if post_ok() then
 		local id = http.formvalue("id") or ""
+		local meta = core.get(id)
+		if meta and meta.local then
+			-- 本地订阅不支持自动更新
+			return
+		end
 		-- pcall 兜底：解析/写入异常不会让 LuCI 页面 500，错误落库后在列表页状态列展示
 		local ok, err = pcall(function()
 			return core.sync(id)

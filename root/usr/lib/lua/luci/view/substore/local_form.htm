@@ -1,0 +1,199 @@
+<%+header%>
+<%
+	local http = require("luci.http")
+	local core = require("substore.core")
+	local id = http.formvalue("id") or ""
+	local it = id ~= "" and core.get(id) or nil
+	local is_edit = it ~= nil
+	local rules_enabled = it and (it.rules_enable == true or it.rules_enable == "1") or false
+	local ki = (it and it.keyword_include) or ""
+	local ke = (it and it.keyword_exclude) or ""
+	local dedup = it and (it.dedup == "1" or it.dedup == true)
+	local local_mode = (it and it.local_mode) or "text"
+	local content = (it and it.raw_content) or ""
+%>
+<h2><%=is_edit and luci.i18n.translate("Edit local subscription") or luci.i18n.translate("Add local subscription")%></h2>
+
+<form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore', is_edit and 'local_save' or 'local_create')%>" class="cbi-map">
+	<input type="hidden" name="token" value="<%=token%>"/>
+	<% if is_edit then %><input type="hidden" name="id" value="<%=it.id%>"/><% end %>
+	<input type="hidden" name="local_mode" value="<%=local_mode%>"/>
+
+	<div class="cbi-section">
+		<div class="cbi-section-descr" style="margin:0.5em 0">
+			<label for="name" style="display:inline-block;min-width:10em"><%:Name%></label>
+			<input type="text" id="name" name="name" value="<%=is_edit and it.name or ''%>"/>
+		</div>
+		<div class="cbi-section-descr" style="margin:0.5em 0">
+			<label style="display:inline-block;min-width:10em"><%:Subscription info%></label>
+			<div style="margin-bottom:0.5em">
+				<select name="local_mode" onchange="this.form.submit()">
+					<option value="text" <%=local_mode=="text" and "selected" or ""%>><%:Text import%></option>
+					<option value="form" <%=local_mode=="form" and "selected" or ""%>><%:Form import%></option>
+				</select>
+			</div>
+			<% if local_mode == "text" then %>
+			<textarea name="content" rows="16" style="width:80%"><%=luci.util.pcdata(content)%></textarea>
+			<div style="color:#808080;margin-top:0.25em"><%:Paste YAML/URI/JSON node list here. Mixed protocols supported.%></div>
+			<% else %>
+			<div id="form_nodes_container">
+				<div style="margin-bottom:0.5em;color:#808080"><%:Add nodes via form below. Each node will be saved as JSON and parsed on save.%></div>
+				<div id="nodes_list"></div>
+				<button type="button" class="cbi-button cbi-button-apply" onclick="addNodeRow()">+ <%:Add node%></button>
+				<input type="hidden" name="content" id="form_content" value="<%=luci.util.pcdata(content)%>"/>
+			</div>
+			<% end %>
+		</div>
+		<div class="cbi-section-descr" style="margin:0.5em 0">
+			<label style="display:inline-block;min-width:10em">启用规则</label>
+			<input type="checkbox" name="rules_enable" value="1" <%=rules_enabled and "checked" or ""%>
+				onchange="var r=document.getElementById('rules_row');if(r)r.style.display=this.checked?'block':'none';"/>
+			<span class="cbi-value-description">启用后，按关键词包含/排除、去重规则处理节点</span>
+		</div>
+		<div id="rules_row" style="margin:0.5em 0;display:<%=rules_enabled and "block" or "none"%>">
+			<div class="cbi-section-descr" style="margin:0.25em 0">
+				<label style="display:inline-block;min-width:10em">关键词包含</label>
+				<input type="text" name="keyword_include" value="<%=ki%>" style="width:60%"/>
+			</div>
+			<div class="cbi-section-descr" style="margin:0.25em 0">
+				<label style="display:inline-block;min-width:10em">关键词排除</label>
+				<input type="text" name="keyword_exclude" value="<%=ke%>" style="width:60%"/>
+			</div>
+			<div class="cbi-section-descr" style="margin:0.25em 0">
+				<label style="display:inline-block;min-width:10em">去重</label>
+				<input type="checkbox" name="dedup" value="1" <%=dedup and "checked" or ""%>/>
+			</div>
+		</div>
+		<% if is_edit and it.last_update then %>
+		<div class="cbi-section-descr" style="margin:0.5em 0">
+			<span style="color:#808080">
+				<%:Nodes:%> <%=it.node_count or 0%>
+				| <%:Last updated:%> <%=os.date("%Y-%m-%d %H:%M", it.last_update)%>
+				<% if it.error and it.error ~= "" then %> | <span style="color:#cc0000"><%=it.error%></span><% end %>
+			</span>
+		</div>
+		<% end %>
+		<div class="cbi-page-actions">
+			<input type="submit" class="cbi-button cbi-button-apply" value="<%:Save%>"/>
+			<a class="cbi-button cbi-button-reset" href="<%=luci.dispatcher.build_url('admin/services/substore/list')%>"><%:Back%></a>
+		</div>
+		<script>
+		const protos = ["vmess","vless","trojan","shadowsocks","ssr","hysteria2","tuic","wireguard"];
+		function nodeTemplate(idx){
+			return `<div class="node_row" style="border:1px solid #ddd;padding:0.5em;margin:0.5em 0">
+				<div style="margin-bottom:0.25em"><strong><%:Node%> ${idx+1}</strong> <button type="button" onclick="this.parentNode.remove()">×</button></div>
+				<label style="display:inline-block;min-width:8em"><%:Name%></label><input type="text" data-k="name" style="width:40%"/><br/>
+				<label style="display:inline-block;min-width:8em"><%:Protocol%></label>
+				<select data-k="type" onchange="renderFields(this)">
+					${protos.map(p=>`<option value="${p}">${p}</option>`).join("")}
+				</select><br/>
+				<div class="fields" data-idx="${idx}"></div>
+			</div>`;
+		}
+		function renderFields(sel){
+			const row = sel.closest('.node_row');
+			const fieldsDiv = row.querySelector('.fields');
+			const proto = sel.value;
+			let html = '';
+			if(proto==='ssr'){
+				html = `<label style="display:inline-block;min-width:8em">server</label><input type="text" data-k="server"/><br/>
+				<label style="display:inline-block;min-width:8em">port</label><input type="text" data-k="port"/><br/>
+				<label style="display:inline-block;min-width:8em">password</label><input type="text" data-k="password"/><br/>
+				<label style="display:inline-block;min-width:8em">cipher</label><input type="text" data-k="cipher"/><br/>
+				<label style="display:inline-block;min-width:8em">protocol</label><input type="text" data-k="protocol"/><br/>
+				<label style="display:inline-block;min-width:8em">obfs</label><input type="text" data-k="obfs"/><br/>
+				<label style="display:inline-block;min-width:8em">obfs-param</label><input type="text" data-k="obfs-param"/><br/>
+				<label style="display:inline-block;min-width:8em">protocol-param</label><input type="text" data-k="protocol-param"/><br/>`;
+			}else if(proto==='vmess'){
+				html = `<label style="display:inline-block;min-width:8em">server</label><input type="text" data-k="server"/><br/>
+				<label style="display:inline-block;min-width:8em">port</label><input type="text" data-k="port"/><br/>
+				<label style="display:inline-block;min-width:8em">uuid</label><input type="text" data-k="uuid"/><br/>
+				<label style="display:inline-block;min-width:8em">alterId</label><input type="text" data-k="alterId"/><br/>
+				<label style="display:inline-block;min-width:8em">security</label><input type="text" data-k="security"/><br/>
+				<label style="display:inline-block;min-width:8em">network</label><input type="text" data-k="net"/><br/>
+				<label style="display:inline-block;min-width:8em">sni</label><input type="text" data-k="sni"/><br/>`;
+			}else if(proto==='vless'){
+				html = `<label style="display:inline-block;min-width:8em">server</label><input type="text" data-k="server"/><br/>
+				<label style="display:inline-block;min-width:8em">port</label><input type="text" data-k="port"/><br/>
+				<label style="display:inline-block;min-width:8em">uuid</label><input type="text" data-k="uuid"/><br/>
+				<label style="display:inline-block;min-width:8em">security</label><input type="text" data-k="security"/><br/>
+				<label style="display:inline-block;min-width:8em">network</label><input type="text" data-k="net"/><br/>
+				<label style="display:inline-block;min-width:8em">sni</label><input type="text" data-k="sni"/><br/>`;
+			}else if(proto==='trojan'){
+				html = `<label style="display:inline-block;min-width:8em">server</label><input type="text" data-k="server"/><br/>
+				<label style="display:inline-block;min-width:8em">port</label><input type="text" data-k="port"/><br/>
+				<label style="display:inline-block;min-width:8em">password</label><input type="text" data-k="password"/><br/>
+				<label style="display:inline-block;min-width:8em">sni</label><input type="text" data-k="sni"/><br/>`;
+			}else if(proto==='shadowsocks'){
+				html = `<label style="display:inline-block;min-width:8em">server</label><input type="text" data-k="server"/><br/>
+				<label style="display:inline-block;min-width:8em">port</label><input type="text" data-k="port"/><br/>
+				<label style="display:inline-block;min-width:8em">password</label><input type="text" data-k="password"/><br/>
+				<label style="display:inline-block;min-width:8em">method</label><input type="text" data-k="method"/><br/>`;
+			}else if(proto==='hysteria2'){
+				html = `<label style="display:inline-block;min-width:8em">server</label><input type="text" data-k="server"/><br/>
+				<label style="display:inline-block;min-width:8em">port</label><input type="text" data-k="port"/><br/>
+				<label style="display:inline-block;min-width:8em">password</label><input type="text" data-k="password"/><br/>
+				<label style="display:inline-block;min-width:8em">sni</label><input type="text" data-k="sni"/><br/>`;
+			}else if(proto==='tuic'){
+				html = `<label style="display:inline-block;min-width:8em">server</label><input type="text" data-k="server"/><br/>
+				<label style="display:inline-block;min-width:8em">port</label><input type="text" data-k="port"/><br/>
+				<label style="display:inline-block;min-width:8em">uuid</label><input type="text" data-k="uuid"/><br/>
+				<label style="display:inline-block;min-width:8em">password</label><input type="text" data-k="password"/><br/>
+				<label style="display:inline-block;min-width:8em">sni</label><input type="text" data-k="sni"/><br/>`;
+			}else if(proto==='wireguard'){
+				html = `<label style="display:inline-block;min-width:8em">server</label><input type="text" data-k="server"/><br/>
+				<label style="display:inline-block;min-width:8em">port</label><input type="text" data-k="port"/><br/>
+				<label style="display:inline-block;min-width:8em">private-key</label><input type="text" data-k="private-key"/><br/>
+				<label style="display:inline-block;min-width:8em">peer-public-key</label><input type="text" data-k="peer-public-key"/><br/>`;
+			}
+			fieldsDiv.innerHTML = html;
+		}
+		function collectNodes(){
+			const rows = document.querySelectorAll('.node_row');
+			const out = [];
+			rows.forEach(r=>{
+				const obj = {};
+				r.querySelectorAll('[data-k]').forEach(el=>{
+					const k = el.getAttribute('data-k');
+					obj[k] = el.value.trim();
+				});
+				const typeSel = r.querySelector('select[data-k="type"]');
+				if(typeSel) obj.type = typeSel.value;
+				if(obj.name || obj.server){ out.push(obj); }
+			});
+			return out;
+		}
+		function addNodeRow(data){
+			const list = document.getElementById('nodes_list');
+			const idx = list.children.length;
+			const div = document.createElement('div');
+			div.innerHTML = nodeTemplate(idx);
+			list.appendChild(div.firstElementChild);
+			const sel = list.lastElementChild.querySelector('select[data-k="type"]');
+			if(sel) renderFields(sel);
+			if(data){
+				const row = list.lastElementChild;
+				row.querySelectorAll('[data-k]').forEach(el=>{
+					const k = el.getAttribute('data-k');
+					if(data[k]!==undefined) el.value = data[k];
+				});
+				const typeSel = row.querySelector('select[data-k="type"]');
+				if(typeSel && data.type){ typeSel.value = data.type; renderFields(typeSel); }
+			}
+		}
+		function initForm(){
+			const hidden = document.getElementById('form_content');
+			if(!hidden) return;
+			try{
+				const data = JSON.parse(hidden.value || '[]');
+				if(Array.isArray(data) && data.length>0){
+					document.getElementById('nodes_list').innerHTML = '';
+					data.forEach(d=>addNodeRow(d));
+				}else{ addNodeRow(); }
+			}catch(e){ addNodeRow(); }
+		}
+		document.addEventListener('DOMContentLoaded', initForm);
+		</script>
+	</div>
+</form>
+<%+footer%>

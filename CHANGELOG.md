@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.3] - 新增本地订阅功能
+
+- 新增本地订阅：支持文本导入与表单导入双模式，本地订阅不走网络更新，Update 按钮禁用
+- 首页按钮调整：`添加订阅` → `添加订阅链接`，新增 `添加本地订阅`
+- 数据模型扩展：`local`、`raw_content`、`local_mode` 字段，`core.add_local` / `parser.parse_local`
+- 控制器新增 `localform` / `local_create` / `local_save` 路由
+- 视图新增 `local_form.htm`，表单导入支持 vmess/vless/trojan/shadowsocks/ssr/hysteria2/tuic/wireguard 动态字段
+
 ## [2.1.2] - 完善协议列表
 
 - 补齐节点列表和规则配置中缺失的协议选项

@@ -3,7 +3,10 @@
 
 <div class="cbi-section">
 	<a class="cbi-button cbi-button-add" href="<%=luci.dispatcher.build_url('admin/services/substore/form')%>">
-		<%:Add subscription%>
+		<%:Add subscription link%>
+	</a>
+	<a class="cbi-button cbi-button-add" href="<%=luci.dispatcher.build_url('admin/services/substore/localform')%>">
+		<%:Add local subscription%>
 	</a>
 	<a class="cbi-button cbi-button-add" href="<%=luci.dispatcher.build_url('admin/services/substore/combo')%>">
 		<%:Add combination%>
@@ -64,6 +67,8 @@
 					for _, sid in ipairs(it.sources) do names[#names + 1] = name_by_id[sid] or sid end
 				end
 				%><span style="color:#808080"><%=table.concat(names, " + ")%></span><%
+			elseif it.local then
+				%><span style="color:#0066aa">[<%:Local%>]</span><%
 			else
 				%><%=it.url%><%
 			end
@@ -101,13 +106,19 @@
 			<div class="cbi-value-description"><%:选择格式后生成订阅链接，格式可随时切换%></div>
 		</td>
 		<td>
+			<% if it.local then %>
+			<span class="cbi-button cbi-button-action" style="opacity:0.5;cursor:not-allowed"><%:Update%></span>
+			<% else %>
 			<form method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/update')%>" style="display:inline">
 				<input type="hidden" name="token" value="<%=token%>"/>
 				<input type="hidden" name="id" value="<%=it.id%>"/>
 				<input type="submit" class="cbi-button cbi-button-action" value="<%:Update%>"/>
 			</form>
+			<% end %>
 			<% if it.combo then %>
 			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/combo')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Edit%></a>
+			<% elseif it.local then %>
+			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/localform')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Edit%></a>
 			<% else %>
 			<a class="cbi-button cbi-button-apply" href="<%=luci.dispatcher.build_url('admin/services/substore/form')%>?id=<%=luci.util.urlencode(it.id)%>"><%:Edit%></a>
 			<% end %>

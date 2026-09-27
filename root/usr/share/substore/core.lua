@@ -7,7 +7,7 @@ local parser = require("substore.parser")
 
 local M = {}
 
-M.version = "2.1.2"
+M.version = "2.1.3"
 M.DATA_DIR = "/etc/substore"
 M.LIST_FILE = M.DATA_DIR .. "/subscriptions.json"
 M.NODES_DIR = M.DATA_DIR .. "/nodes"
@@ -89,8 +89,42 @@ function M.add(name, url, opts)
 		keyword_exclude = util.trim(opts.keyword_exclude or ""),
 		dedup = (opts.dedup == true or opts.dedup == "1") and "1" or "0",
 		rename_map = opts.rename_map or "",
+		local = false,
+		raw_content = "",
+		local_mode = "text",
 	}
 	if not save(seq, items) then return nil, "写入失败" end
+	return id
+end
+
+function M.add_local(name, raw_content, local_mode, opts)
+	name = util.trim(name or "")
+	raw_content = util.trim(raw_content or "")
+	local_mode = local_mode or "text"
+	opts = opts or {}
+	if name == "" or raw_content == "" then return nil, "名称/内容 不能为空" end
+	local seq, items = load()
+	seq = seq + 1
+	local id = string.format("s%08x", seq)
+	items[id] = {
+		name = name, url = "", enabled = true,
+		node_count = 0, last_update = nil, error = "", format = "",
+		token = util.rnd_hex(16),
+		proxy_enable = "0", proxy = "",
+		cron_enable = false, cron_time = "",
+		rules_enable = (opts.rules_enable == true or opts.rules_enable == "1") and true or false,
+		proto_filter = util.trim(opts.proto_filter or ""),
+		keyword_include = util.trim(opts.keyword_include or ""),
+		keyword_exclude = util.trim(opts.keyword_exclude or ""),
+		dedup = (opts.dedup == true or opts.dedup == "1") and "1" or "0",
+		rename_map = opts.rename_map or "",
+		local = true,
+		raw_content = raw_content,
+		local_mode = local_mode,
+	}
+	if not save(seq, items) then return nil, "写入失败" end
+	-- 立即解析一次
+	M.sync(id)
 	return id
 end
 
@@ -203,6 +237,33 @@ function M.sync(id)
 		local cnt, cerr = M.combo_refresh(id)
 		if not cnt then log("Combo refresh fail: " .. tostring(cerr)) end
 		return cnt, cerr
+	end
+	-- 本地订阅：直接解析 raw_content
+	if meta.local then
+		log("Sync local subscription")
+		local content = meta.raw_content or ""
+		if content == "" then
+			M.save_meta(id, { error = "本地订阅内容为空", node_count = 0, last_update = os.time() })
+			return nil, "本地订阅内容为空"
+		end
+		local res, perr = parser.parse_local(content, meta.local_mode or "text")
+		if not res or not res.nodes then
+			log("Parse local fail: " .. tostring(perr))
+			M.save_meta(id, { error = perr or "本地解析失败", node_count = 0, last_update = os.time() })
+			return nil, perr or "本地解析失败"
+		end
+		log("Parse local ok nodes="..#res.nodes)
+		local nodes = M.apply_rules(res.nodes, meta)
+		if not M.write_nodes(id, nodes) then
+			M.save_meta(id, { error = "写入节点数据失败", last_update = os.time() })
+			return nil, "写入节点数据失败"
+		end
+		local ok = M.save_meta(id, {
+			node_count = #nodes, format = res.format or "local", error = "", last_update = os.time(),
+		})
+		if not ok then return nil, "更新状态失败" end
+		M.refresh_combos(id)
+		return #nodes
 	end
 	if not meta.url or meta.url == "" then log("Sync fail: no URL"); return nil, "无订阅 URL" end
 
