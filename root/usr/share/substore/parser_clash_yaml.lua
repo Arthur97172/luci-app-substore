@@ -116,7 +116,9 @@ local function parse_yaml(content)
 				if type(obj) == "table" then m = obj end
 			else
 				local k, v = dash:match("^([^:]+):%s*(.*)$")
-				if k and v ~= "" then
+				-- 引号开头的列表项是标量而非映射：避免把 "- \"::/0\"" 里的冒号
+				-- 当成 key:value 分隔符，从而把整个标量解析成 table
+				if k and v ~= "" and not dash:match("^[\"']") then
 					m = { [k:gsub("%s*$", "")] = scalar(v) }
 				end
 			end

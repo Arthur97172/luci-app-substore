@@ -132,6 +132,7 @@ function M.to_share_uri(n)
 			["allowed-ips"] = n["allowed-ips"],
 			reserved = n.reserved,
 			["persistent-keepalive"] = n["persistent-keepalive"],
+			["listen-port"] = n["listen-port"],
 			dns = n.dns,
 			["amnezia-wg-option"] = n["amnezia-wg-option"],
 		}

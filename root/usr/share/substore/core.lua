@@ -344,6 +344,7 @@ local FORM_KEYS = {
 	["public-key"] = true, public_key = true, ["pre-shared-key"] = true, preshared_key = true, 
 	ip = true, ipv6 = true, ["allowed-ips"] = true, allowed_ips = true,
 	reserved = true, ["persistent-keepalive"] = true, persistent_keepalive = true,
+	["listen-port"] = true, listen_port = true,
 	mtu = true, dns = true, ["amnezia-wg-option"] = true,
 }
 

@@ -15,7 +15,7 @@ var PROTO_FIELDS = {
 	shadowsocks: ["server","port","password","method","headerType","udp"],
 	hysteria2: ["server","port","password","sni","obfs","obfs-password","skip-cert-verify"],
 	tuic: ["server","port","uuid","password","sni","udp","skip-cert-verify"],
-	wireguard: ["server","port","private-key","public-key","pre-shared-key","ip","ipv6","allowed-ips","reserved","persistent-keepalive","mtu","amnezia-wg-option"]
+	wireguard: ["server","port","private-key","public-key","pre-shared-key","ip","ipv6","allowed-ips","reserved","persistent-keepalive","listen-port","mtu","amnezia-wg-option"]
 };
 
 // 枚举字段用下拉框；键为 "协议.字段" 优先，退化为通用 "字段"
