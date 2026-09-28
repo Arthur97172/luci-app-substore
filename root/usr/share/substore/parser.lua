@@ -365,11 +365,20 @@ local function parse_wireguard(uri, body)
 	local out = node.normalize({
 		proto = "wireguard", name = name, server = j.server, port = tonumber(j.port),
 		["private-key"] = j["private-key"] or j.private_key,
-		["peer-public-key"] = j["peer-public-key"] or j.peer_public_key,
-		["preshared-key"] = j["preshared-key"] or j.preshared_key,
+		["peer-public-key"] = j["peer-public-key"] or j.peer_public_key or j["public-key"] or j.public_key,
+		["public-key"] = j["public-key"] or j.public_key or j["peer-public-key"] or j.peer_public_key,
+		["preshared-key"] = j["preshared-key"] or j.preshared_key or j["pre-shared-key"] or j.pre_shared_key,
+		["pre-shared-key"] = j["pre-shared-key"] or j.pre_shared_key or j["preshared-key"] or j.preshared_key,
+		ip = j.ip or j["local-address"] or j.local_address,
+		ipv6 = j.ipv6,
+		["allowed-ips"] = j["allowed-ips"] or j.allowed_ips,
+		reserved = j.reserved,
+		["persistent-keepalive"] = j["persistent-keepalive"] or j.persistent_keepalive,
+		mtu = tonumber(j.mtu),
+		dns = j.dns,
+		["amnezia-wg-option"] = j["amnezia-wg-option"] or j.amnezia_wg_option,
 		raw = uri,
 	})
-	if j.mtu then out.mtu = tonumber(j.mtu) end
 	if out.name == "" and j.name then out.name = j.name end
 	return out
 end

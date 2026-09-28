@@ -32,6 +32,16 @@ local function scalar(raw)
 	if raw == "false" or raw == "False" or raw == "FALSE" then return false end
 	if raw == "null" or raw == "~" or raw == "" then return nil end
 	raw = raw:gsub('^"(.*)"$', "%1"):gsub("^'(.*)'$", "%1")
+	-- 内联数组 [1,2,3] / ['a','b']
+	if raw:sub(1,1) == "[" and raw:sub(-1) == "]" then
+		local arr = {}
+		for item in raw:sub(2,-2):gmatch("[^,%s]+") do
+			item = item:gsub('^"(.*)"$', "%1"):gsub("^'(.*)'$", "%1")
+			local n = tonumber(item)
+			if n then arr[#arr+1]=n else arr[#arr+1]=item end
+		end
+		return arr
+	end
 	local n = tonumber(raw)
 	if n then return n end
 	return raw

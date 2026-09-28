@@ -161,14 +161,38 @@ local function format_node(node)
 		if node["private-key"] then
 			lines[#lines + 1] = "    private-key: " .. esc_yaml(node["private-key"])
 		end
-		if node["peer-public-key"] then
-			lines[#lines + 1] = "    peer-public-key: " .. esc_yaml(node["peer-public-key"])
+		if node["public-key"] or node["peer-public-key"] then
+			lines[#lines + 1] = "    public-key: " .. esc_yaml(node["public-key"] or node["peer-public-key"])
 		end
-		if node["preshared-key"] then
-			lines[#lines + 1] = "    preshared-key: " .. esc_yaml(node["preshared-key"])
+		if node["pre-shared-key"] or node["preshared-key"] then
+			lines[#lines + 1] = "    pre-shared-key: " .. esc_yaml(node["pre-shared-key"] or node["preshared-key"])
 		end
-		if node.uuid then
-			lines[#lines + 1] = "    uuid: " .. esc_yaml(node.uuid)
+		if node.ip then
+			lines[#lines + 1] = "    ip: " .. esc_yaml(node.ip)
+		end
+		if node.ipv6 then
+			lines[#lines + 1] = "    ipv6: " .. esc_yaml(node.ipv6)
+		end
+		if node["allowed-ips"] then
+			lines[#lines + 1] = "    allowed-ips: " .. esc_yaml(node["allowed-ips"])
+		end
+		if node.reserved then
+			lines[#lines + 1] = "    reserved: " .. esc_yaml(node.reserved)
+		end
+		if node["persistent-keepalive"] then
+			lines[#lines + 1] = "    persistent-keepalive: " .. esc_yaml(node["persistent-keepalive"])
+		end
+		if node.mtu then
+			lines[#lines + 1] = "    mtu: " .. esc_yaml(node.mtu)
+		end
+		if node.dns then
+			lines[#lines + 1] = "    dns: " .. esc_yaml(node.dns)
+		end
+		if node["amnezia-wg-option"] and type(node["amnezia-wg-option"])=="table" then
+			lines[#lines + 1] = "    amnezia-wg-option:"
+			for k,v in pairs(node["amnezia-wg-option"]) do
+				lines[#lines + 1] = "      " .. k .. ": " .. esc_yaml(v)
+			end
 		end
 	end
 

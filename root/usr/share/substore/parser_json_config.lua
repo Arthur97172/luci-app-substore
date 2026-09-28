@@ -70,9 +70,16 @@ function M.parse_singbox_json(content)
 						if outbound.congestion_control then node_data.congestion_control = outbound.congestion_control end
 					elseif proto == "wireguard" then
 						node_data["private-key"] = outbound["private-key"] or outbound.private_key
-						node_data["peer-public-key"] = outbound["peer-public-key"] or outbound.peer_public_key
-						node_data["preshared-key"] = outbound["preshared-key"] or outbound.preshared_key
+						node_data["peer-public-key"] = outbound["peer-public-key"] or outbound.peer_public_key or outbound["public-key"] or outbound.public_key
+						node_data["public-key"] = outbound["public-key"] or outbound.public_key or outbound["peer-public-key"] or outbound.peer_public_key
+						node_data["preshared-key"] = outbound["preshared-key"] or outbound.preshared_key or outbound["pre-shared-key"] or outbound.pre_shared_key
+						node_data["pre-shared-key"] = outbound["pre-shared-key"] or outbound.pre_shared_key or outbound["preshared-key"] or outbound.preshared_key
+						node_data.ip = outbound["local-address"] or outbound.local_address
+						node_data["allowed-ips"] = outbound["allowed-ips"] or outbound.allowed_ips
+						node_data.reserved = outbound.reserved
+						node_data["persistent-keepalive"] = outbound["persistent-keepalive"] or outbound.persistent_keepalive
 						if outbound.mtu then node_data.mtu = outbound.mtu end
+						node_data.dns = outbound.dns
 					elseif proto == "socks" or proto == "http" then
 						node_data.username = outbound.username
 						node_data.password = outbound.password
@@ -234,9 +241,18 @@ function M.parse_clash_json(content)
 						node_data.password = proxy.password
 					elseif proto == "wireguard" then
 						node_data["private-key"] = proxy["private-key"] or proxy.private_key
-						node_data["peer-public-key"] = proxy["peer-public-key"] or proxy.peer_public_key
-						node_data["preshared-key"] = proxy["preshared-key"] or proxy.preshared_key
+						node_data["peer-public-key"] = proxy["peer-public-key"] or proxy.peer_public_key or proxy["public-key"] or proxy.public_key
+						node_data["public-key"] = proxy["public-key"] or proxy.public_key or proxy["peer-public-key"] or proxy.peer_public_key
+						node_data["preshared-key"] = proxy["preshared-key"] or proxy.preshared_key or proxy["pre-shared-key"] or proxy.pre_shared_key
+						node_data["pre-shared-key"] = proxy["pre-shared-key"] or proxy.pre_shared_key or proxy["preshared-key"] or proxy.preshared_key
+						node_data.ip = proxy.ip
+						node_data.ipv6 = proxy.ipv6
+						node_data["allowed-ips"] = proxy["allowed-ips"]
+						node_data.reserved = proxy.reserved
+						node_data["persistent-keepalive"] = proxy["persistent-keepalive"]
 						if proxy.mtu then node_data.mtu = proxy.mtu end
+						node_data.dns = proxy.dns
+						node_data["amnezia-wg-option"] = proxy["amnezia-wg-option"]
 					elseif proto == "socks" or proto == "http" then
 						node_data.username = proxy.username
 						node_data.password = proxy.password

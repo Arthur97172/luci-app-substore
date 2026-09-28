@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0-r5] - WireGuard 完整字段与 AmneziaWG 支持
+
+- WireGuard 节点补全字段：public-key/pre-shared-key/ip/ipv6/allowed-ips/reserved/persistent-keepalive/mtu/dns/amnezia-wg-option
+- Clash Meta 导出字段名修正为 public-key/pre-shared-key，补齐 ip/allowed-ips 等必填项，支持 amnezia-wg-option 子块全量输出
+- sing-box 导出修正 pre_shared_key，补齐 local_address/reserved/persistent_keepalive_interval
+- parser 补读 WireGuard 扩展字段，兼容旧名 peer-public-key/preshared-key
+- core FORM_KEYS 补入 WireGuard 扩展字段，避免表单编辑后丢失
+- nodeform.js PROTO_FIELDS.wireguard 扩充，表单显示完整字段
+- local_form.htm / node_edit.htm FIELD_LABELS 补入 WireGuard 扩展字段标签
+- parser_clash_yaml 补内联数组解析，支持 reserved/allowed-ips
+- output_clash_meta esc_yaml 修复 find 平文匹配 bug
+- 版本号 2.2.0-r4 → 2.2.0-r5；README/INSTALL 同步
+
 ## [2.2.0-r4] - 节点协议标签统一为 Type / 类型
 
 - 节点列表页筛选标签与表头由 `Protocol / 协议` 统一改为 `Type / 类型`
