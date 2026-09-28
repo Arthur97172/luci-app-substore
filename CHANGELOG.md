@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0-r4] - 节点协议标签统一为 Type / 类型
+
+- 节点列表页筛选标签与表头由 `Protocol / 协议` 统一改为 `Type / 类型`
+- 节点编辑 / 本地订阅表单导入的协议选择标签由 `Protocol` 改为 `Type`，中文显示为“类型”
+- `nodeform.js` 标签键由 `protocol` 改为 `type`，与下拉框 `data-k="type"` 一致
+- `local_form.htm` / `node_edit.htm` 的 `FIELD_LABELS` 由 `"protocol": "<%:Protocol%>"` 改为 `"type": "<%:Type%>"`
+- 版本号 2.2.0-r3 → 2.2.0-r4；README.md / README.en.md / docs/INSTALL.md 版本同步
+
 ## [2.2.0-r3] - 节点表单导入字段语言混合优化
 
 - 「添加本地订阅」表单导入 /「编辑节点」页：名称 / 分组 / 协议保持系统语言（中/英切换），其余技术参数字段固定为英文（Server / Port / Password / Cipher / Method / Security / Network / Header Type / Path / Obfs / Obfs Param / Obfs Password / Protocol Param / Skip Cert Verify / Private Key / Peer Public Key），与 Clash YAML / 分享链接字段名保持一致，提升可对照性

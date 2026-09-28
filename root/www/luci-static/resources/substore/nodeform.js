@@ -77,7 +77,7 @@ function nodeTemplate(idx) {
 		'<input type="text" data-k="name" style="width:50%"/><br/>' +
 		'<label style="display:inline-block;min-width:10em">' + nodeformLabel("group") + '</label>' +
 		'<input type="text" data-k="group" style="width:50%"/><br/>' +
-		'<label style="display:inline-block;min-width:10em">' + nodeformLabel("protocol") + '</label>' +
+		'<label style="display:inline-block;min-width:10em">' + nodeformLabel("type") + '</label>' +
 		'<select data-k="type" onchange="renderFields(this)">' + opts + '</select><br/>' +
 		'<div class="fields"></div>' +
 		'</div>';
