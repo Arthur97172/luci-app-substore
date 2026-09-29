@@ -7,7 +7,7 @@ local parser = require("substore.parser")
 
 local M = {}
 
-M.version = "2.5.1"
+M.version = "2.6.0"
 M.DATA_DIR = "/etc/substore"
 M.LIST_FILE = M.DATA_DIR .. "/subscriptions.json"
 M.NODES_DIR = M.DATA_DIR .. "/nodes"
@@ -363,6 +363,10 @@ local FORM_KEYS = {
 	reserved = true, ["persistent-keepalive"] = true, persistent_keepalive = true,
 	["listen-port"] = true, listen_port = true,
 	mtu = true, dns = true, ["amnezia-wg-option"] = true,
+	-- socks / http 的用户名。必须在表里：下面的 merge_form_node 先按 FORM_KEYS
+	-- 清空原节点再套用提交值，不在表里的字段会保留旧值——用户在表单里清空用户名
+	-- 也删不掉（collectNodes 会略过空值），等于改不动。
+	username = true,
 }
 
 -- 合并表单节点到原节点：表单字段整体替换（可清空），非表单字段保留

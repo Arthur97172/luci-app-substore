@@ -112,11 +112,22 @@ function M.to_outbound(n, tag)
 	elseif stype == "shadowsocks" then
 		o.method = n.method or n.cipher or "aes-256-gcm"
 		o.password = n.password or ""
-	elseif stype == "hysteria2" or stype == "hysteria" then
+	elseif stype == "hysteria2" then
 		o.password = n.password or ""
-		-- 混淆（salamander）
+		-- 混淆（salamander）：hysteria2 的 obfs 是 { type, password } 对象
 		if n.obfs and n.obfs ~= "" and n.obfs ~= "plain" then
 			o.obfs = { type = n.obfs, password = n["obfs-password"] or n.obfs_password or "" }
+		end
+	elseif stype == "hysteria" then
+		-- hysteria(v1) 与 hysteria2 在 sing-box 里的字段名并不相同（已对照上游文档确认）：
+		--   * 认证字段是 auth_str，不是 password（parser_json_config 也是按
+		--     outbound.password or outbound.auth_str or outbound.auth 回读的）
+		--   * obfs 是普通字符串，不是 { type, password } 对象
+		-- 注意：sing-box 的 hysteria 出站还要求 up/down（带宽），本项目的节点模型
+		-- 不承载该字段，需用户在自己的配置里补上（见 CHANGELOG 已知限制）。
+		o.auth_str = n.password or ""
+		if n.obfs and n.obfs ~= "" and n.obfs ~= "plain" then
+			o.obfs = n.obfs
 		end
 	elseif stype == "tuic" then
 		o.uuid = n.uuid or ""
@@ -142,7 +153,8 @@ function M.to_outbound(n, tag)
 		if n["listen-port"] then o.listen_port = tonumber(n["listen-port"]) end
 		if n.mtu then o.mtu = tonumber(n.mtu) end
 		if n.dns then o.dns = n.dns end
-	elseif stype == "socks" then
+	elseif stype == "socks" or stype == "http" then
+		-- socks 与 http 出站的认证字段相同（username / password）
 		if n.username then o.username = n.username end
 		if n.password then o.password = n.password end
 	end

@@ -106,10 +106,15 @@ local function format_node(node)
 	end
 
 	-- servername / sni
-	if node.sni then
+	-- vmess / vless / trojan 在 mihomo 里用 servername；hysteria / hysteria2 用 sni
+	-- （已对照上游文档确认：hysteria 系列没有 servername 字段，写了会被忽略，
+	-- 结果 SNI 丢失 → 客户端拿 IP 校验证书直接握手失败）。hysteria 系列的 sni
+	-- 由下面的协议专属分支输出。
+	local is_hysteria = (ctype == "hysteria" or ctype == "hysteria2")
+	if node.sni and not is_hysteria then
 		lines[#lines + 1] = "    servername: " .. esc_yaml(node.sni)
 	end
-	if node.servername then
+	if node.servername and not is_hysteria then
 		lines[#lines + 1] = "    servername: " .. esc_yaml(node.servername)
 	end
 
@@ -152,13 +157,24 @@ local function format_node(node)
 		if node.sni then
 			lines[#lines + 1] = "    sni: " .. esc_yaml(node.sni)
 		end
-		-- 混淆（salamander）
+		-- 混淆（salamander）：hysteria2 的 obfs 是 { type, password } 两段
 		if node.obfs and node.obfs ~= "" and node.obfs ~= "plain" then
 			lines[#lines + 1] = "    obfs: " .. esc_yaml(node.obfs)
 			local opw = node["obfs-password"] or node.obfs_password
 			if opw and opw ~= "" then
 				lines[#lines + 1] = "    obfs-password: " .. esc_yaml(opw)
 			end
+		end
+	end
+
+	if ctype == "hysteria" then
+		-- hysteria(v1)：obfs 只是普通字符串，**没有** obfs-password
+		-- （obfs-password 是 hysteria2 的 salamander 专属字段，写到 v1 上是非法键）
+		if node.sni then
+			lines[#lines + 1] = "    sni: " .. esc_yaml(node.sni)
+		end
+		if node.obfs and node.obfs ~= "" and node.obfs ~= "plain" then
+			lines[#lines + 1] = "    obfs: " .. esc_yaml(node.obfs)
 		end
 	end
 
@@ -214,12 +230,12 @@ local function format_node(node)
 		end
 	end
 
-	if ctype == "socks5" then
+	-- socks5 / http 的认证字段都是 username + password（已对照上游 mihomo 文档确认）。
+	-- password 已由上面的「协议通用字段」输出，这里只补 username——重复输出会让
+	-- YAML 里出现两个 password 键，属于非法/歧义配置。
+	if ctype == "socks5" or ctype == "http" then
 		if node.username then
 			lines[#lines + 1] = "    username: " .. esc_yaml(node.username)
-		end
-		if node.password then
-			lines[#lines + 1] = "    password: " .. esc_yaml(node.password)
 		end
 	end
 

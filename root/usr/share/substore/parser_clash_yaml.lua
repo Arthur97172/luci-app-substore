@@ -7,7 +7,10 @@ local node = require("substore.node")
 
 local M = {}
 
--- Clash type → 统一 proto
+-- Clash type → 统一 proto。
+-- 这是**权威映射表**：parser_json_config 与 parser.lua 的简易 YAML 兜底解析都复用同一份，
+-- 避免各自维护一份而漂移（曾出现兜底那份缺 hysteria2/hysteria/tuic/wireguard，
+-- 且把 socks5 原样留下，导致这些节点被误当成 vmess 或被筛选器静默丢弃）。
 local TYPE_MAP = {
 	vmess = "vmess",
 	vless = "vless",
@@ -23,6 +26,9 @@ local TYPE_MAP = {
 	ssr = "ssr",
 	http = "http",
 }
+
+-- 导出供 parser.lua 的简易 YAML 兜底解析复用（单一事实来源）
+M.TYPE_MAP = TYPE_MAP
 
 -- 标量值转换：布尔 / 数字 / 去引号 / 保留字符串
 local function scalar(raw)

@@ -58,7 +58,10 @@ function M.surge_line(n)
 		if n.password then e[#e + 1] = "password=" .. n.password end
 		if n.sni then e[#e + 1] = "sni=" .. n.sni end
 		if n.alpn then e[#e + 1] = "alpn=" .. n.alpn end
-	elseif proto == "socks5" or proto == "socks" then
+	elseif proto == "socks5" or proto == "socks" or proto == "http" then
+		-- socks5 / http 在 Surge 家族里都用 username= / password= 具名参数
+		-- （Surge 手册：Name = http, <host>, <port>[, <username>, <password>]
+		--   "may be given positionally after the port, or as named parameters"）
 		if n.username then
 			e[#e + 1] = "username=" .. n.username
 			if n.password then e[#e + 1] = "password=" .. n.password end
