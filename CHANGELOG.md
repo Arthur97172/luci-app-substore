@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.2-r1] - 更新日志补记与遗留缺陷汇总
+
+**文档批次，无代码改动。**
+
+- **补记 P0 四次推送的更新内容**：`[2.6.0-r2]` ～ `[2.6.0-r5]` 四个条目对应提交
+  `12ab1a7` / `46fe3b6` / `2b9934e` / `fb51e6e`。这四次推送当时**未提升版本号**
+  （`Makefile` 始终为 `2.6.0-r1`），因此本文件原先没有对应条目；现按推送顺序补记，
+  使更新日志与实际推送一一对应。包版本号未回改，历史提交未被重写。
+- **新增 [`docs/LEGACY_ISSUES.md`](docs/LEGACY_ISSUES.md)**：汇总截至 2.6.1-r1 审计中
+  已确认但**尚未修复**的问题，每项给出代码级依据、影响面与候选修复方案，供决定后续
+  修复优先级。原始 70 项审计表未落盘，该文件自本次起作为「未修复项」的权威清单。
+- **修正一处遗留项的描述**：`[2.6.1-r1]` 中记录的「sing-box YAML 读取侧不读传输参数」
+  经实测确认**比原描述更严重**——两个读取侧都不把 `transport.type` 映射到 `net`，
+  ws / grpc / h2 节点导入后**整层传输丢失**（退化为 tcp 直连），而非仅丢 path/host。
+  详见 `docs/LEGACY_ISSUES.md` 第 3 节。
+- 版本号 2.6.1-r1 → 2.6.2-r1。
+
 ## [2.6.1-r1] - P1 批次缺陷修复（解析保真 / 输出合法性）
 
 本轮修复 2.6.0 审计表中 **P1 批次的 13 项缺陷**，另修复审计过程中实测确认的
@@ -85,17 +102,142 @@ All notable changes to this project will be documented in this file.
 
 ### 已知未修复（待确认，本轮未改）
 
+> 汇总已迁移至 [`docs/LEGACY_ISSUES.md`](docs/LEGACY_ISSUES.md)，含各项的代码级
+> 依据、影响面与候选修复方案。此处保留索引：
+
 - **H10 的丢更新（lost update）**：`load()` → `save()` 之间无任何锁，并发写会
   互相覆盖。Lua 5.1 没有可用的原子锁原语（`os.rename` 覆盖语义无法 CAS、
   无 `flock`、`io.open` 无 `"x"` 模式、无 `link()`），`mkdir` 方案有陈旧锁死锁
   风险。建议作为已知限制记录，或引入 `nixio` 的 flock（本机无法验证）。
 - **M28 / M29（CSRF `post_ok()`、ACL）**：依赖 LuCI 框架运行时行为
   （`test_post_security`、ACL 解析），本机无 LuCI 运行环境，无法验证，故未改。
-- **sing-box JSON 读取侧不读 `tls.utls.fingerprint`**：YAML 侧本轮已支持，
-  JSON 侧（`parser_json_config.parse_singbox_json`）仍不读，两者存在不一致。
-  属功能缺口而非回归，留待确认。
-- **sing-box YAML 读取侧不读传输参数**（ws/grpc/h2 的 path/host）：与
-  `parse_singbox_json` 的现状一致（两边都不读），属既有缺口，留待确认。
+- **sing-box 读取侧传输整层丢失**：`parse_singbox_json` 不读 `transport.type` /
+  `transport.path` / `transport.headers.Host` / `tls.utls.fingerprint`，
+  简易 YAML 侧同样不处理 `transport`。实测 ws 节点导入后 `net=tcp`、`path=nil`、
+  `host=nil`，即整层传输丢失（原记录为「不读 path/host」，实测更严重）。
+- **`converter.lua` / `node_converter.lua` 为死代码**：应用中无任何转换入口，
+  但 README 声称「协议转换：任意协议 → 任意协议」。
+
+## [2.6.0-r5] - P0 批次四：表单编辑丢 TLS、注入 XSS 与协议字段清单漂移
+
+> 补记条目，对应提交 `fb51e6e`。编号说明见下方 `[2.6.0-r2]` 末尾。
+
+- **H2 节点页注入 `<script>` 的 id 未转义 `</`**：`json_encode` 不转义 `<`，
+  而 `</script` 在 HTML 词法阶段就闭合脚本元素（与 JS 字符串上下文无关）。
+  id 直接来自查询串，构造 `</script><script>alert(1)</script>` 即可执行任意脚本。
+  与 `node_edit.htm` / `local_form.htm` 一致改为 `json_encode` 后转义 `</`。
+- **H3 表单编辑静默清空「表单没渲染的字段」**：根因是 `nodeform.js` 的
+  `PROTO_FIELDS` 与 `core.merge_form_node` 的 `FORM_KEYS` 是两份各自维护的清单，
+  前者决定渲染什么、后者决定清空什么，必然漂移。表单没渲染的字段提交不上来，
+  合并时一并清空等于用空值覆盖原值：
+  - vmess 的 TLS 层字段是 `security`，表单却渲染 `tls` —— 编辑一次就把
+    `security` 抹成 `nil`，`normalize` 再补成 `"none"`，**启用 TLS 的节点静默变明文**；
+  - hysteria2 / hysteria / tuic 是 TLS-only，表单不渲染 `security` —— 编辑一次就丢
+    TLS，sing-box 因 `C.ErrTLSRequired` 拒绝启动；
+  - WireGuard 的 `dns`、vmess 的 `flow` 同理被抹掉。
+
+  修法：字段清单收敛到唯一来源 `substore/node.lua` 的 `M.PROTO_FIELDS`，由 LuCI
+  页面渲染成 `window.SUBSTORE_PROTO_FIELDS` 注入（协议列表 `M.PROTOS` 同样处理），
+  `nodeform.js` 不再自带副本。`core.merge_form_node` 只清空「本协议表单渲染过」的
+  字段，外加：
+  - `FORM_ALIASES` —— 解析器产出的下划线写法（`skip_cert_verify`、`obfs_param`…）
+    与 `tls`/`security`、`method`/`cipher` 互为别名，必须跟随规范名一起清空，
+    否则残留值「关不掉」（`build_tls` 在 `security` 为 `"none"` 时还会退回 `n.tls`）；
+  - 协议被改过时把旧协议的字段一并清空（vmess 改 trojan 不该留 uuid）；
+  - 协议未知时退回旧的「清空全部表单字段」行为。
+- 顺带修掉审计中发现的两个同类问题：
+  - `node.lua` 的 `DEFAULTS` 补 hysteria2 / hysteria / tuic 的 `security="tls"` ——
+    TLS-only 是协议约束，属归一化该保证的不变量（与 trojan 同理）。Clash YAML /
+    sing-box JSON 导入的这两个协议原先没有 `security`，导出的是客户端起不来的配置；
+  - `FIELD_LABELS` 补 `"protocol"`（SSR 表单原先显示英文键名）。
+
+测试：`core_merge_node_test.lua` 扩到 28 项；新增 `view_injection_test.lua`
+（38 项，静态检查注入转义与字段清单一致性）；全套 38 个测试文件通过。
+
+## [2.6.0-r4] - P0 批次三：列表文件损坏抹除订阅、原子写失效与 token 可预测
+
+> 补记条目，对应提交 `2b9934e`。编号说明见下方 `[2.6.0-r2]` 末尾。
+
+- **H8 `core.load` 不再把「解析失败」当成空列表**：原先 `json_decode` 失败即
+  `return 0, {}`，而 `M.add` / `M.add_local` / `M.add_combo` 会在这个空表上追加
+  一条再整表写回 —— **一次损坏就抹掉用户全部订阅**，且 `_seq` 归零后重新发出
+  `s00000001` 这类已用过的 ID。现在 `load` 返回第三个值 `err`，写入路径据此拒绝
+  操作；`M.list` 也把 `err` 透出给调用方。
+- **H9 `atomic_write` 检查 write / close / rename 的返回值**：磁盘写满时 `f:write`
+  失败但 `os.rename` 仍会成功，等于**原子地换上一个残缺文件**而调用方以为写入成功。
+  失败路径统一清理临时文件并返回 `false, err`。
+- **H10 临时文件名唯一化**：原先固定为 `"<path>.tmp"`，两个进程同时写同一路径会
+  交错写进同一个临时文件，`rename` 上去的是两者内容的混合体，各自的原子性都失效。
+  现改为 `"<path>.tmp.<8 字节随机 hex>"`。
+- **H11 `rnd_hex` 改用内核熵源**：Lua 5.1 的 `math.random` 是 31 位 LCG，原实现每次
+  调用都重新播种，同一时钟刻度内给出相同序列：**实测 20 万次调用约 9.7% 重复**。
+  订阅下载 token 是访问控制的唯一凭据，重复即可被猜测。现优先读 `/dev/urandom`，
+  仅在不可用时退回只播种一次的 PRNG。
+
+新增 `tests/data_integrity_test.lua`（28 项断言）覆盖上述四项，
+全套 37 个 Lua 测试文件全部通过。
+
+## [2.6.0-r3] - P0 批次二：解析器静默吞掉整份订阅
+
+> 补记条目，对应提交 `46fe3b6`。编号说明见下方 `[2.6.0-r2]` 末尾。
+
+- **base64 里包着 YAML / JSON**（`parser.lua`）：base64 分支原先一律把解码结果按
+  URI 列表解析。机场把整份 Clash 配置或 sing-box 配置 base64 后直接下发是常见做法，
+  这类订阅会得到 **0 个节点且不报错**，用户只看到「订阅为空」。现在解码后重新走一遍
+  `detect`/`parse` 复用既有分支；`inner == "base64"` 时不再递归（避免 base64 套
+  base64 无限递归），外层容器格式仍报 `base64`。
+- **流式风格与行尾注释**（`parser_clash_yaml.lua`）：
+  - 新增 `parse_flow_map` / `split_top`：`- {name: A, type: vmess, server: 1.1.1.1}`
+    是合法 YAML 但不是合法 JSON（键没加引号），`util.json_decode` 必然失败，
+    原先**整项被静默丢弃**。现在 JSON 解失败后回落到 YAML 流式映射解析，并正确
+    切分 `{}` / `[]` 内部以及引号内的逗号（`alpn: [h2, http/1.1]`）。
+  - 新增 `strip_comment`：YAML 规定内联注释的 `#` 前必须有空白，且引号内的 `#`
+    不是注释。原先 `proxies: # 说明` 会把注释文本当成值，`proxies` 变成字符串，
+    **整份配置被判定为「没有 proxies」**。列表项同样处理（`- {...} # 注释`）。
+
+回归测试：新增 20 项断言（base64 包 YAML / JSON / 嵌套 base64、流式映射、流式数组值、
+行尾注释、`#` 无空白与引号内 `#` 必须保留）。
+
+## [2.6.0-r2] - P0 批次一：sing-box TLS 失效、未知协议泄漏与输出格式注入
+
+> 补记条目，对应提交 `12ab1a7`。
+
+**输出正确性：**
+
+- `output_singbox`：tls 块补 `enabled=true`。sing-box 的 `OutboundTLSOptions.Enabled`
+  是 bool + `omitempty`（`option/tls.go`），**缺省即 false**：只写 `server_name` 而不写
+  `enabled` 等于没配 TLS —— vmess/vless/trojan 退化为明文拨号，hysteria2/tuic 更会因
+  `C.ErrTLSRequired` 拒绝启动。顺带移除因此变成死代码的空表分支，并更正
+  `parser_json_config` 里「enabled 缺省即 true」的错误注释。
+- `parser_clash_yaml`：未知 Clash 类型（snell / shadowtls / mieru 等）改为**丢弃**。
+  原先 `TYPE_MAP[p.type] or p.type or "vmess"` 会把它透传成 sing-box 的 `type:"snell"`、
+  Xray 的 `protocol:"snell"` 这类非法取值，客户端会拒绝加载整份配置；缺失 type 时兜底成
+  vmess 则是凭空造出字段全错的假节点。`parser.lua` 的简易 YAML 兜底解析（复用同一张
+  `TYPE_MAP`）早已如此处理，此处对齐。
+- `output_clash_meta`：`sni` 与 `servername` 同时存在时只输出一个 `servername` 键。
+  Clash YAML 导入会同时填上两者，原先各写一行让 YAML 出现**重复键**。
+- `output_clash_meta`：`esc_yaml` 补 `\r` / `\t` 转义，并在转义前判断是否需要加引号 ——
+  转义后的 `"\t"` 落在 plain scalar 里会被 YAML 当成两个普通字符；未加引号的换行/回车
+  则直接破坏文档结构。
+- `output_formats`：tuic 的 alpn 为数组时（sing-box JSON / Clash YAML 的 alpn 列表
+  导入后即为 table）不再 `attempt to concatenate a table value`。
+
+**换行注入**（节点名等来自订阅内容，属不可信输入）：
+
+- 新增 `util.one_line`：把值压成单行（换行/回车转空格，其余控制字符丢弃）。
+- `output_formats`：`surge_line` / 代理组行 / Quantumult X 的 `server_local` 与 `policy`
+  行统一压平 —— 含换行的节点名会截断当前行并**伪造出新的代理行**。
+- `output_wireguard_conf`：`.conf` 注释行压平 —— 否则节点名里的 `"\n[Interface]"`
+  会**注入出真正的配置段**。
+
+回归测试：新增 34 项断言覆盖以上全部缺陷（含 sing-box TLS 往返、surge/QX/wgconf 的
+行数不变性、未知类型丢弃、控制字符转义）。
+
+> **关于以上四条 `-r2` ～ `-r5` 的编号**：这四次推送（`12ab1a7` / `46fe3b6` /
+> `2b9934e` / `fb51e6e`）当时**未提升版本号**，`Makefile` 始终为 `2.6.0-r1`，
+> 因此本文件中原先没有对应条目。现按推送顺序补记为 `-r2` ～ `-r5`，使更新日志与实际
+> 推送一一对应。包版本号本身未回改，历史提交未被重写；从 2.6.1 起恢复
+> 「每次推送提升一个版本号」的约定。
 
 ## [2.6.0-r1] - 协议覆盖补全与导入/输出保真修复
 
