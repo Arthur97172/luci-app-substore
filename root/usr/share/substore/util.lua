@@ -77,6 +77,14 @@ function M.shq(s)
 	return "'" .. tostring(s or ""):gsub("'", "'\\''") .. "'"
 end
 
+-- 把值压成单行。Surge / Loon / Quantumult X / wg-quick .conf 都是行式格式：
+-- 值里一旦含换行，就会截断当前行并伪造出额外的一行（节点名、sni、path 等
+-- 全部来自订阅内容，属于不可信输入）。换行/回车压成空格，其余控制字符丢弃。
+function M.one_line(s)
+	if s == nil then return nil end
+	return (tostring(s):gsub("[\r\n]+", " "):gsub("%c", ""))
+end
+
 -- 生成随机十六进制 token（用于下载链接访问控制）
 function M.rnd_hex(len)
 	len = len or 16

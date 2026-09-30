@@ -158,7 +158,15 @@ local function map_clash_node(p)
 	if type(p) ~= "table" then return nil end
 	if not p.name or not p.server or not p.port then return nil end
 
-	local proto = TYPE_MAP[p.type] or p.type or "vmess"
+	-- 未知协议必须丢弃，不能原样透传、也不能兜底成 vmess：
+	--   * 原样透传：统一模型承载不了 snell / shadowtls / mieru / ssh 等类型（认证
+	--     方式与字段都不同），透传出去会在输出端变成 sing-box 的 type: "snell"、
+	--     Xray 的 protocol: "snell" 这类非法取值，客户端会拒绝加载整份配置。
+	--   * 兜底成 vmess：那是凭空造出一个字段全错的节点，比丢弃更糟（用户看到
+	--     "导入成功"，实际拿到一批不可用的假节点）。
+	-- parser.lua 的简易 YAML 兜底解析（复用同一张 TYPE_MAP）早已按此处理，此处对齐。
+	local proto = TYPE_MAP[p.type]
+	if not proto then return nil end
 	local n = {
 		proto = proto,
 		name = p.name,

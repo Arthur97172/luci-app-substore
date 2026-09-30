@@ -222,5 +222,33 @@ if fnodes and #fnodes >= 2 then
 end
 
 -- ---------- 结果 ----------
+-- H6：未知 Clash 类型必须丢弃。透传出去会在输出端变成 sing-box 的 type: "snell"、
+-- Xray 的 protocol: "snell" 这类非法取值，客户端会拒绝加载整份配置；
+-- 兜底成 vmess 则是凭空造出一个字段全错的假节点，比丢弃更糟。
+local unknown = parser.parse([[
+proxies:
+  - name: SN
+    type: snell
+    server: 1.1.1.1
+    port: 443
+    psk: secret
+  - name: OK
+    type: vmess
+    server: 2.2.2.2
+    port: 443
+    uuid: u
+]])
+check("unknown clash type dropped", #unknown == 1)
+check("known node survives", unknown[1] ~= nil and unknown[1].proto == "vmess")
+check("unknown proto not leaked", unknown[1] ~= nil and unknown[1].proto ~= "snell")
+
+-- 缺失 type 同样丢弃（不再兜底成 vmess）
+check("missing type dropped", #parser.parse([[
+proxies:
+  - name: X
+    server: 1.1.1.1
+    port: 443
+]]) == 0)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)
