@@ -1012,6 +1012,17 @@ function M.parse(content)
 		-- 兼容标准 base64 与 base64url（- _ 无 padding）：base64_url_decode 两者皆可
 		local decoded = util.base64_url_decode(content)
 		if decoded == "" then return nil, "Base64 解码失败" end
+		-- 解出来的内容本身可能是 YAML / JSON：机场把整份 Clash 配置或 sing-box
+		-- 配置 base64 后直接下发是很常见的做法。原先一律按 URI 列表解析，这类
+		-- 订阅会得到 0 个节点且不报错（用户只看到「订阅为空」）。
+		-- 递归走一遍 detect/parse 复用既有分支；inner == "base64" 时不再递归，
+		-- 避免 base64 套 base64 时无限递归。外层容器格式仍是 base64。
+		local inner = M.detect(decoded)
+		if inner ~= "base64" and inner ~= "empty" and inner ~= "unknown" then
+			local res, err = M.parse(decoded)
+			if res then res.format = "base64" end
+			return res, err
+		end
 		return { nodes = parse_lines(split_lines(decoded)), format = "base64" }
 	elseif format == "json" then
 		local nodes, err = parse_json_content(content)

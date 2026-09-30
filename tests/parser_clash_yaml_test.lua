@@ -250,5 +250,53 @@ proxies:
     port: 443
 ]]) == 0)
 
+-- H4a：YAML 流式风格（键未加引号）是合法 YAML 但不是合法 JSON，
+-- 原先 json_decode 失败后整项被静默丢弃
+local flow = parser.parse([[
+proxies:
+  - {name: F, type: vmess, server: 1.1.1.1, port: 443, uuid: u}
+]])
+check("flow style node count", #flow == 1)
+check("flow style proto", flow[1] ~= nil and flow[1].proto == "vmess")
+check("flow style server", flow[1] ~= nil and flow[1].server == "1.1.1.1")
+check("flow style port is number", flow[1] ~= nil and flow[1].port == 443)
+
+-- 流式风格的数组值仍要拆成 table
+local flow_arr = parser.parse([[
+proxies:
+  - {name: FA, type: vmess, server: 1.1.1.1, port: 443, uuid: u, alpn: [h2, http/1.1]}
+]])
+check("flow style array value", flow_arr[1] ~= nil and type(flow_arr[1].alpn) == "table")
+
+-- 键带引号的流式写法仍走 JSON 分支
+check("json flow style still works", #parser.parse([[
+proxies:
+  - {"name":"J","type":"vmess","server":"1.1.1.1","port":443,"uuid":"u"}
+]]) == 1)
+
+-- H4b：行尾注释不得被当成值（`proxies: # 说明` 曾让 proxies 变成字符串）
+local commented = parser.parse([[
+proxies: # 我的节点
+  - name: C
+    type: vmess
+    server: 1.1.1.1
+    port: 443
+    uuid: u
+]])
+check("proxies with trailing comment", #commented == 1)
+check("comment not used as value", commented[1] ~= nil and commented[1].server == "1.1.1.1")
+
+-- 列表项的行尾注释同样要去掉
+check("list item trailing comment", #parser.parse([[
+proxies:
+  - {name: T, type: vmess, server: 1.1.1.1, port: 443, uuid: u} # 行尾注释
+]]) == 1)
+
+-- # 前无空白、或位于引号内时都不是注释，必须原样保留
+local hash_plain = parser.parse("proxies:\n  - name: A\n    type: ss\n    server: 1.1.1.1\n    port: 443\n    cipher: aes-128-gcm\n    password: p#ss\n")
+check("hash without space kept", hash_plain[1] ~= nil and hash_plain[1].password == "p#ss")
+local hash_quoted = parser.parse('proxies:\n  - name: A\n    type: ss\n    server: 1.1.1.1\n    port: 443\n    cipher: aes-128-gcm\n    password: "a # b"\n')
+check("hash inside quotes kept", hash_quoted[1] ~= nil and hash_quoted[1].password == "a # b")
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)
