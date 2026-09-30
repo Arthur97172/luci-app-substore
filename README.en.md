@@ -42,6 +42,12 @@ group them, then re-emit them in a format your client can consume.
   `listen-port` / `mtu` / `dns`) plus the `amnezia-wg-option` sub-block
   (Jc / Jmin / Jmax / S1–S4 / H1–H4 / I1–I5 / J1–J3 / Itime); you can paste the contents
   of a `.conf` file exported by an AmneziaWG client directly
+- **Parsing tolerance**: `ssr://` accepts both the standard and the base64url alphabet
+  for its outer layer; incomplete nodes (missing `server`, or `port` outside 1–65535)
+  are dropped **at parse time** (otherwise they become `server:` / `port: 0`, which makes
+  mihomo and sing-box refuse to load the whole file — one bad node kills a subscription);
+  passwords containing `@` are split on the **last** `@`; sing-box YAML's nested `tls:`
+  block (including the `alpn` list and `utls.fingerprint`) is fully expanded
 
 **Node processing**
 - Browse nodes, filter by group / protocol, keyword search, sort
@@ -66,6 +72,8 @@ group them, then re-emit them in a format your client can consume.
 - 15 output formats (all implemented): Plain JSON, Stash, Clash.Meta / Mihomo YAML,
   Clash (original), Surfboard, Surge, Surge Mac, Loon, Egern, Shadowrocket,
   Quantumult X, sing-box, V2Ray / Xray, V2Ray URI, WireGuard / AmneziaWG `.conf`
+  - **Clash.Meta / Mihomo**: emits transport parameters in full (`ws-opts` / `grpc-opts` /
+    `h2-opts` path, host and service name) plus vless `flow` (XTLS Vision)
   - **Clash (original)**: for Dreamacro Clash / ClashX / Clash for Windows; protocols the
     original does not support (vless / hysteria2 / hysteria / tuic / wireguard) are filtered out
   - **WireGuard / AmneziaWG `.conf`**: wg-quick single-interface config with `[Interface]` /
@@ -78,6 +86,10 @@ group them, then re-emit them in a format your client can consume.
     - V2Ray/Xray: node outbounds + `freedom` (direct) / `blackhole` (block) + `observatory` +
       `routing.balancers` (`leastPing` auto-selection), with built-in `geoip:private` direct
       and a catch-all route
+      - Only Xray-supported protocols are emitted (vmess / vless / trojan / shadowsocks /
+        socks / http); hysteria2 / hysteria / tuic / wireguard / ssr have no corresponding
+        outbound type and are filtered out (an unknown `protocol` makes Xray refuse to load
+        the whole config)
     - Deliberately **excludes `inbounds` / `dns`**: those bind local listening ports and
       override your existing DNS settings — keep them in your own config and merge this
       output into it
@@ -96,18 +108,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.0-r1`).
+> [Makefile](Makefile) (currently `2.6.1-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.0-r1.ipk
+opkg install luci-app-substore-2.6.1-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.0-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.1-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.

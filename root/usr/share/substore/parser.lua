@@ -29,6 +29,21 @@ local function split_lines(content)
 	return out
 end
 
+-- 节点必须有可用的 server 与 port，否则解析阶段就丢弃。
+--
+-- 依据：Clash / sing-box / v2ray 的输出都会把缺失值写成 `server: `（空字符串）
+-- 或 `port: 0`。这两个值不是「降级」，而是**非法配置**——mihomo 与 sing-box 会
+-- 拒绝加载整份文件，于是一个残缺节点废掉整个订阅的所有节点。
+-- 与 H6（未知协议）同理：模型承载不了的东西不进模型，而不是带着非法值往下传。
+--
+-- port 来自 util.split_hostport，只会是 "%d+" 匹配到的数字串或 nil，
+-- 因此这里只需判空与范围（0 与 >65535 都是非法端口）。
+local function valid_hostport(host, port)
+	if not host or host == "" then return false end
+	local p = tonumber(port)
+	return p ~= nil and p >= 1 and p <= 65535
+end
+
 -- 检测订阅格式：uri / base64 / json / yaml / empty / unknown
 function M.detect(content)
 	content = util.trim(content or "")
@@ -123,7 +138,7 @@ local function parse_ss(body)
 	end
 	local method, password = userinfo:match("^([^:]+):(.*)$")
 	local host, port = util.split_hostport(hostport)
-	if not (method and password and host) then return nil, "bad ss" end
+	if not (method and password and valid_hostport(host, port)) then return nil, "bad ss" end
 	local name = fragment ~= "" and fragment or (host .. ":" .. tostring(port or ""))
 	local out = node.normalize({
 		proto = "shadowsocks", name = name, server = host, port = tonumber(port),
@@ -159,7 +174,14 @@ local function parse_ssr(body)
 		rest = rest:sub(1, hash - 1)
 	end
 	if rest:find("%", 1, true) then rest = util.url_decode(rest) end
-	local decoded = util.base64_decode(rest)
+	-- 用 base64_url_decode 而不是 base64_decode：前者只是先把 -/_ 还原成 +//
+	-- 再走标准解码，对标准 base64 输入逐字节等价（标准字母表里没有 -/_），
+	-- 对 base64url 输入才是正确的。
+	-- 反过来的代价很大：base64_decode 会把 -/_ 当非法字符**直接剔除**
+	-- （util.lua 的 `s:gsub("[^%w%+/=]", "")`），于是外层用了 base64url 的
+	-- ssr:// 链接会少掉若干字符、整串解成乱码——server / port / 密码全错，
+	-- 而且不报错，用户只看到一个连不上的节点。
+	local decoded = util.base64_url_decode(rest)
 	if decoded == "" then return nil, "bad ssr" end
 
 	-- 以首个 '?' 切分主体与参数（密码 base64 可能含 '/'，故不能按 '/' 切分）
@@ -169,8 +191,7 @@ local function parse_ssr(body)
 
 	local server, port, protocol, method, obfs, pwd_b64 = main:match("^([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$")
 	if not server or server == "" then return nil, "bad ssr" end
-	local password = util.base64_url_decode(pwd_b64 or "")
-	if password == "" then password = pwd_b64 or "" end
+	local password = b64u_decode(pwd_b64 or "")
 
 	local params = {}
 	for k, v in (query or ""):gmatch("([^&=]+)=([^&]*)") do
@@ -215,6 +236,7 @@ local function parse_vless(uri, body)
 	if not at then return nil, "bad vless" end
 	local uuid = hp:sub(1, at - 1)
 	local host, port = util.split_hostport(hp:sub(at + 1))
+	if not valid_hostport(host, port) then return nil, "bad vless" end
 	local out = node.normalize({
 		proto = "vless", name = name, server = host, port = tonumber(port), uuid = uuid, raw = uri,
 	})
@@ -250,10 +272,16 @@ local function parse_trojan(uri, body)
 			query[k] = util.url_decode(v)
 		end
 	end
-	local at = hp:find("@", 1, true)
-	if not at then return nil, "bad trojan" end
-	local password = hp:sub(1, at - 1)
-	local host, port = util.split_hostport(hp:sub(at + 1))
+	-- 取**最后**一个 @：userinfo 里不允许裸 @，未编码的 @ 只可能出现在密码里。
+	-- 按第一个 @ 切会把 "p@ss" 切成密码 "p" + server "ss@1.2.3.4"（静默出错）。
+	-- 与 parse_socks / parse_hysteria2 / parse_tuic 保持同一策略。
+	local userinfo, hostport = hp:match("^(.*)@([^@]*)$")
+	if not userinfo then return nil, "bad trojan" end
+	-- 密码必须 url_decode：output_uri 写链接时会 url_encode，不解码就是双重编码
+	-- （"p@ss:w/rd" → 回读成 "p%40ss%3Aw%2Frd"），回环一次密码就错了。
+	local password = util.url_decode(userinfo)
+	local host, port = util.split_hostport(hostport)
+	if not valid_hostport(host, port) then return nil, "bad trojan" end
 	local out = node.normalize({
 		proto = "trojan", name = name, server = host, port = tonumber(port),
 		password = password, raw = uri,
@@ -291,6 +319,7 @@ local function parse_vmess(uri, body)
 		local at = hp:find("@", 1, true)
 		local uuid = hp:sub(1, at - 1)
 		local host, port = util.split_hostport(hp:sub(at + 1))
+		if not valid_hostport(host, port) then return nil, "bad vmess" end
 		local out = node.normalize({
 			proto = "vmess", name = name, server = host, port = tonumber(port),
 			uuid = uuid, raw = uri,
@@ -311,6 +340,7 @@ local function parse_vmess(uri, body)
 	if decoded == "" then return nil, "bad vmess b64" end
 	local j = util.json_decode(decoded)
 	if type(j) ~= "table" or not j.add then return nil, "bad vmess json" end
+	if not valid_hostport(j.add, j.port) then return nil, "bad vmess json" end
 	local out = node.normalize({
 		proto = "vmess",
 		name = j.ps or (j.add .. ":" .. tostring(j.port)),
@@ -323,6 +353,12 @@ local function parse_vmess(uri, body)
 		security = (j.tls == "tls" or j.tls == true) and "tls" or nil,
 		raw = uri,
 	})
+	-- host / path 是 ws（以及 http/h2）传输的必需参数：output_uri 会把它们写成
+	-- vmess://…?host=…&path=…，不回读就等于导出→导入丢字段。丢 path 的后果最严重——
+	-- Clash 输出得到 network: ws 却没有 ws-opts.path，客户端请求 "/" 而非真实路径。
+	-- vless 分支与 vmess 新版 URI 分支早已回读这两个字段，此处是对齐。
+	if j.host and j.host ~= "" then out.host = j.host end
+	if j.path and j.path ~= "" then out.path = j.path end
 	return out
 end
 
@@ -343,10 +379,13 @@ local function parse_hysteria2(uri, body)
 			query[k] = util.url_decode(v)
 		end
 	end
-	local at = hp:find("@", 1, true)
-	if not at then return nil, "bad hysteria2" end
-	local password = util.url_decode(hp:sub(1, at - 1))
-	local host, port = util.split_hostport(hp:sub(at + 1))
+	-- 取最后一个 @（见 parse_socks 的说明）：按第一个 @ 切会把密码里的裸 @ 当成
+	-- userinfo 分隔符，得到密码 "p" 和 server "ss@1.2.3.4"——静默解析出一个错节点。
+	local userinfo, hostport = hp:match("^(.*)@([^@]*)$")
+	if not userinfo then return nil, "bad hysteria2" end
+	local password = util.url_decode(userinfo)
+	local host, port = util.split_hostport(hostport)
+	if not valid_hostport(host, port) then return nil, "bad hysteria2" end
 	local out = node.normalize({
 		proto = "hysteria2", name = name, server = host, port = tonumber(port),
 		password = password, raw = uri,
@@ -390,11 +429,11 @@ local function parse_hysteria(uri, body)
 			query[k] = util.url_decode(v)
 		end
 	end
-	local at = hp:find("@", 1, true)
-	if not at then return nil, "bad hysteria" end
-	local password = util.url_decode(hp:sub(1, at - 1))
-	local host, port = util.split_hostport(hp:sub(at + 1))
-	if not host or host == "" then return nil, "bad hysteria" end
+	local userinfo, hostport = hp:match("^(.*)@([^@]*)$")
+	if not userinfo then return nil, "bad hysteria" end
+	local password = util.url_decode(userinfo)
+	local host, port = util.split_hostport(hostport)
+	if not valid_hostport(host, port) then return nil, "bad hysteria" end
 	local out = node.normalize({
 		proto = "hysteria", name = name, server = host, port = tonumber(port),
 		password = password, raw = uri,
@@ -468,16 +507,18 @@ local function parse_tuic(uri, body)
 			query[k] = util.url_decode(v)
 		end
 	end
-	local at = hp:find("@", 1, true)
-	if not at then return nil, "bad tuic" end
-	local userinfo = util.url_decode(hp:sub(1, at - 1))
+	-- 取最后一个 @（见 parse_socks 的说明）
+	local raw_userinfo, hostport = hp:match("^(.*)@([^@]*)$")
+	if not raw_userinfo then return nil, "bad tuic" end
+	local userinfo = util.url_decode(raw_userinfo)
 	local uuid, password = "", userinfo
 	local cpos = userinfo:find(":", 1, true)
 	if cpos then
 		uuid = userinfo:sub(1, cpos - 1)
 		password = userinfo:sub(cpos + 1)
 	end
-	local host, port = util.split_hostport(hp:sub(at + 1))
+	local host, port = util.split_hostport(hostport)
+	if not valid_hostport(host, port) then return nil, "bad tuic" end
 	local out = node.normalize({
 		proto = "tuic", name = name, server = host, port = tonumber(port),
 		uuid = uuid, password = password, raw = uri,
@@ -746,15 +787,39 @@ local function parse_json_content(content)
 	if data[1] then list = data else list = { data } end
 	local nodes = {}
 	for _, o in ipairs(list) do
-		if type(o) == "table" and o.server and o.port then
-			nodes[#nodes + 1] = node.normalize({
-				proto = o.proto or "vmess",
-				name = o.name or (o.server .. ":" .. o.port),
-				server = o.server, port = tonumber(o.port),
-				uuid = o.uuid, password = o.password, method = o.method,
-				net = o.net, security = o.security, sni = o.sni,
-				raw = o.raw,
-			})
+		-- 协议名可能写在 proto 或 type 里：表单导入落盘的 JSON 用的就是 type
+		-- （见 M.parse_local 的 form 分支），同一份 JSON 走文本导入也必须解析出
+		-- 同一个协议，否则 `{"type":"vless",…}` 会被当成 vmess。
+		-- 两者都没有时保留旧的 vmess 兜底；type 存在但不在 TYPE_MAP 里，说明这是
+		-- 统一模型承载不了的协议，丢弃而不是兜底成 vmess（理由见 H6 的说明：
+		-- 凭空造一个字段全错的假节点比丢弃更糟）。
+		local proto, type_is_proto = o.proto, false
+		if proto == nil or proto == "" then
+			if o.type == nil or o.type == "" then
+				proto = "vmess"
+			else
+				proto = parser_clash_yaml.TYPE_MAP[o.type]
+				type_is_proto = true
+			end
+		end
+		if proto and type(o) == "table" and valid_hostport(o.server, o.port) then
+			-- 与 M.parse_local 的 form 分支同样「透传全部字段」：这里原来是硬编码
+			-- 白名单，只搬 proto/name/server/port/uuid/password/method/net/security/sni，
+			-- 于是 path / host / cipher / alterId / flow / fp / alpn / tls / obfs 等
+			-- 全被静默丢掉——ws 节点丢掉 path 就连不上。字段清单散落成多份必然漂移，
+			-- 统一由 node.normalize 收口。
+			local n = {}
+			for k, v in pairs(o) do n[k] = v end
+			n.proto = proto
+			-- 只有真的把 type 当作协议名消费掉时才清空它，避免误删 vmess 的
+			-- header type（output_uri 会读 n.type or n.headerType）
+			if type_is_proto then n.type = nil end
+			n.port = tonumber(n.port) or n.port
+			if n.alterId ~= nil then n.alterId = tonumber(n.alterId) or n.alterId end
+			if n.name == nil or n.name == "" then
+				n.name = (n.server or "") .. ":" .. tostring(n.port or "")
+			end
+			nodes[#nodes + 1] = node.normalize(n)
 		end
 	end
 	return nodes, nil
@@ -769,14 +834,95 @@ local function parse_yaml_content(content)
 	local in_proxies = false
 	local proxies_indent = 0
 
-	for i, line in ipairs(lines) do
+	-- 读取从 start 行开始、缩进大于 min_indent 的 `k: v` 映射，递归处理嵌套 map
+	-- （sing-box 的 tls: {enabled, server_name, utls: {fingerprint}} 就有两层）。
+	-- 返回 (map, 下一个未消费的行号)。
+	--
+	-- 单层收集是不够的：内层键会被摊平进外层，`utls.enabled` 会覆盖 `tls.enabled`，
+	-- `utls.fingerprint` 会变成 `tls.fingerprint`——取值看似还在，语义已经错了。
+	--
+	-- nlines 必须在这里就声明：read_map 是局部函数，闭包捕获的是此刻可见的
+	-- 变量；若 nlines 声明在后面，函数体里的 nlines 会被解析成全局变量。
+	local nlines = #lines
+	-- 读取从 start 行开始、缩进大于 min_indent 的 `- item` 序列。
+	-- 必须先于 read_map 声明：Lua 的局部函数只看得见「声明在它之前」的局部变量，
+	-- 顺序反了 read_seq 会解析成全局变量。
+	--
+	-- 序列必须先于嵌套 map 尝试：read_map 碰到 `- ` 开头的行会立刻 break，
+	-- 于是 `alpn:` 这种序列键会让整个子块从该行起被截断——不只 alpn 丢失，
+	-- 排在它后面的键（sing-box 的 utls.fingerprint 等）也一并消失。
+	local function read_seq(start, min_indent)
+		local seq, j = {}, start
+		while j <= nlines do
+			local l = lines[j]
+			local t = util.trim(l)
+			if t == "" then
+				j = j + 1
+			else
+				local ind = #(l:match("^%s*") or "")
+				if ind <= min_indent then break end
+				local item = t:match("^%-%s*(.*)$")
+				if not item then break end
+				seq[#seq + 1] = item:gsub('^["\'](.*)["\']$', '%1')
+				j = j + 1
+			end
+		end
+		return seq, j
+	end
+
+	local function read_map(start, min_indent)
+		local map, j = {}, start
+		while j <= nlines do
+			local l = lines[j]
+			local t = util.trim(l)
+			if t == "" then
+				j = j + 1
+			else
+				local ind = #(l:match("^%s*") or "")
+				if ind <= min_indent or t:match("^%-") then break end
+				local k, v = t:match("^([^:]+):%s*(.*)$")
+				if not k then break end
+				k, v = util.trim(k), util.trim(v)
+				if v ~= "" then
+					-- 去掉引号
+					map[k] = v:gsub('^["\'](.*)["\']$', '%1')
+					j = j + 1
+				else
+					-- 先试序列，再试嵌套 map（见 read_seq 的注释：顺序不能反）
+					local seq, sj = read_seq(j + 1, ind)
+					if next(seq) then
+						map[k] = seq
+						j = sj
+					else
+						local sub, nj = read_map(j + 1, ind)
+						if next(sub) then
+							map[k] = sub
+							j = nj
+						else
+							-- 空值且不是嵌套 map / 序列：保持旧行为（跳过该键）
+							j = j + 1
+						end
+					end
+				end
+			end
+		end
+		return map, j
+	end
+
+	-- 用 while 而不是 for：值为空的键要向后收集嵌套 map（sing-box 的
+	-- `tls:` 块），必须能一次吃掉多行。Lua 的数值 for 每轮都会重新赋值控制
+	-- 变量，循环体内改 i 不生效；Lua 5.1 也没有 goto。
+	local i = 1
+	while i <= nlines do
+		local line = lines[i]
 		local trimmed = util.trim(line)
 		if trimmed == "" or trimmed:sub(1, 1) == "#" then
-			-- 跳过空行和注释
+			i = i + 1
 		elseif trimmed:match("^proxies:%s*$") or trimmed:match("^outbounds:%s*$") then
 			in_proxies = true
-			proxies_indent = line:match("^%s*") and #line:match("^%s*") or 0
+			proxies_indent = #(line:match("^%s*") or "")
 			current_node = nil
+			i = i + 1
 		elseif in_proxies then
 			-- 检测列表项开始：- name: xxx 或单独的 -
 			local list_match = line:match("^%s*%-%s*(.*)$")
@@ -787,21 +933,44 @@ local function parse_yaml_content(content)
 				end
 				current_node = {}
 				-- 检查列表项同一行是否有字段
-				if list_match:match("^([^:]+):%s*(.+)$") then
-					local k, v = list_match:match("^([^:]+):%s*(.+)$")
-					current_node[k] = util.trim(v)
-				end
+				local k, v = list_match:match("^([^:]+):%s*(.+)$")
+				if k then current_node[util.trim(k)] = util.trim(v) end
+				i = i + 1
 			else
 				-- 解析缩进的字段
-				local indent = line:match("^%s*") and #line:match("^%s*") or 0
+				local indent = #(line:match("^%s*") or "")
 				if current_node and indent > proxies_indent then
-					local k, v = trimmed:match("^([^:]+):%s*(.+)$")
-					if k then
+					local k, v = trimmed:match("^([^:]+):%s*(.*)$")
+					if not k then
+						i = i + 1
+					else
 						k = util.trim(k)
 						v = util.trim(v)
-						-- 去掉引号
-						v = v:gsub('^["\'](.*)["\']$', '%1')
-						current_node[k] = v
+						if v ~= "" then
+							-- 去掉引号
+							current_node[k] = v:gsub('^["\'](.*)["\']$', '%1')
+							i = i + 1
+						else
+							-- 值为空：可能是嵌套 map（sing-box 的 tls: {enabled: true, …}）。
+							-- 原先这类行直接被跳过，于是 security 永远读不到，TLS 整层丢失：
+							-- 导出的 sing-box 配置里 trojan/vmess/vless 静默退化成明文，
+							-- hysteria2/tuic 更让客户端以 C.ErrTLSRequired 拒绝启动。
+							-- 先试序列（alpn: 后面跟 - h2），再试嵌套 map（tls: {...}）
+							local seq, sj = read_seq(i + 1, indent)
+							if next(seq) then
+								current_node[k] = seq
+								i = sj
+							else
+								local sub, nj = read_map(i + 1, indent)
+								if next(sub) then
+									current_node[k] = sub
+									i = nj
+								else
+									-- 空值且不是嵌套 map / 序列：保持旧行为（跳过该键）
+									i = i + 1
+								end
+							end
+						end
 					end
 				else
 					-- 遇到缩进减少，结束当前节点
@@ -810,8 +979,11 @@ local function parse_yaml_content(content)
 						current_node = nil
 					end
 					in_proxies = false
+					i = i + 1
 				end
 			end
+		else
+			i = i + 1
 		end
 	end
 
@@ -860,10 +1032,49 @@ local function parse_yaml_content(content)
 			local skip_cert_verify = nil
 			if scv == true or scv == "true" or scv == "1" then skip_cert_verify = true
 			elseif scv == false or scv == "false" or scv == "0" then skip_cert_verify = false end
+			-- sing-box 的 tls 是一个嵌套 map（tls: {enabled, server_name, insecure, alpn}），
+			-- 上面收集成子表后在这里展开。字段名对照 parser_json_config.parse_singbox_json
+			-- （本项目读取 sing-box 出站的权威实现），不另立一套。
+			local tls_map = type(n.tls) == "table" and n.tls or nil
+			if tls_map then
+				-- enabled 是显式开关：sing-box 的 OutboundTLSOptions.Enabled 默认 false，
+				-- 只有 tls 块存在并不代表启用
+				local enabled = tls_map.enabled
+				if enabled == true or enabled == "true" or enabled == "1" then
+					if tls_map.reality and tls_map.reality ~= "" and tls_map.reality ~= false then
+						n.security = "reality"
+					else
+						n.security = "tls"
+					end
+				elseif tls_map.reality and tls_map.reality ~= "" and tls_map.reality ~= false then
+					n.security = "reality"
+				end
+				-- server_name / insecure 只在节点顶层没有对应字段时补
+				if (n.sni == nil or n.sni == "") and tls_map.server_name then n.sni = tls_map.server_name end
+				if scv == nil and tls_map.insecure ~= nil then
+					local ins = tls_map.insecure
+					if ins == true or ins == "true" or ins == "1" then skip_cert_verify = true
+					elseif ins == false or ins == "false" or ins == "0" then skip_cert_verify = false end
+				end
+				if n.alpn == nil and tls_map.alpn ~= nil then n.alpn = tls_map.alpn end
+				-- sing-box 的 utls 也是嵌套 map：{enabled, fingerprint}
+				local utls = tls_map.utls
+				if n.fp == nil and type(utls) == "table" then
+					local ue = utls.enabled
+					if (ue == true or ue == "true" or ue == "1") and utls.fingerprint ~= nil then
+						n.fp = utls.fingerprint
+					end
+				end
+			end
 			-- 注意不能用 `(cond) and nil or x` 写法：Lua 的 and/or 在 cond 为真时
 			-- 结果是 nil，会被后面的 or 继续兜底，等于没生效
 			local tls_security = n.security
 			if vmess_cipher ~= nil then tls_security = nil end
+			-- 同上：嵌套 map 已展开，标量 tls 才继续往下传。
+			-- 这里同样不能写 `(type(x)=="table") and nil or x` —— cond 为真时得到
+			-- `true and nil` = nil，再被 `or x` 兜回 x，等于没生效。
+			local tls_scalar = n.tls
+			if type(tls_scalar) == "table" then tls_scalar = nil end
 			local node_data = {
 				proto = proto,
 				name = n.name or n.Name or n.tag or (n.server .. ":" .. tostring(port)),
@@ -876,11 +1087,21 @@ local function parse_yaml_content(content)
 				-- Clash 的 cipher 是 vmess 加密方式；tls 才是 TLS 层，
 				-- 交由 node.normalize 归一到 security
 				cipher = vmess_cipher,
-				tls = n.tls,
+				-- 嵌套 map 已在上面展开成 security/sni/… ，这里只透传标量写法。
+				-- 传 table 下去会被下游的 `if n.tls then` 当成「已启用 TLS」
+				-- （Lua 里 table 恒为真值），tls.enabled=false 也会被判成启用。
+				tls = tls_scalar,
 				-- sing-box 的 vmess.security 已被上面消费为 cipher，不再当 TLS 层
 				security = tls_security,
 				-- Clash 写 sni / servername，sing-box 的 tls 子块写 server_name
 				sni = n.sni or n.servername or n.server_name,
+				-- 下面三项在 tls 子块里展开后挂在 n 上，必须显式带进 node_data，
+				-- 否则赋值后立刻被丢掉（n 只是个中间收集表，不参与最终结果）。
+				-- 字段名对照 parser_json_config.parse_singbox_json（本项目读取
+				-- sing-box 出站的权威实现）：那边同样读 flow 与 tls.alpn。
+				flow = n.flow,
+				alpn = n.alpn,
+				fp = n.fp,
 				-- sing-box 的 tls.insecure 对应 skip-cert-verify。
 				-- 行解析器读出来的是字符串，而 "false" / "0" 在 Lua 里也是真值，
 				-- 直接透传会让 skip-cert-verify=false 变成「跳过证书校验」，故显式判假。

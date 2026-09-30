@@ -97,6 +97,28 @@ local function format_node(node)
 				lines[#lines + 1] = "      headers:"
 				lines[#lines + 1] = "        Host: " .. esc_yaml(node.host)
 			end
+		elseif net == "grpc" then
+			-- 服务名写在 grpc-opts 里。只写 network: grpc 的话客户端用默认服务名
+			-- 去连，握手失败——与 ws 丢 path 是同一类问题（原来的实现只写了 network）。
+			-- 键名对照上游 transport 文档：grpc-service-name，带 grpc- 前缀。
+			-- 服务名取自 node.path，与 output_v2ray 的 serviceName、
+			-- output_singbox 的 service_name 同源。
+			if node.path then
+				lines[#lines + 1] = "    grpc-opts:"
+				lines[#lines + 1] = "      grpc-service-name: " .. esc_yaml(node.path)
+			end
+		elseif net == "h2" then
+			-- 上游 transport 文档：h2-opts.host 是**列表**，h2-opts.path 是标量。
+			if node.path or node.host then
+				lines[#lines + 1] = "    h2-opts:"
+				if node.host then
+					lines[#lines + 1] = "      host:"
+					lines[#lines + 1] = "        - " .. esc_yaml(node.host)
+				end
+				if node.path then
+					lines[#lines + 1] = "      path: " .. esc_yaml(node.path)
+				end
+			end
 		end
 	end
 
@@ -158,6 +180,16 @@ local function format_node(node)
 		end
 		if not node.cipher then
 			lines[#lines + 1] = "    cipher: auto"
+		end
+	end
+
+	if ctype == "vless" then
+		-- flow 是 XTLS Vision（xtls-rprx-vision）的必需参数。不写的话 mihomo 按
+		-- 普通 vless 处理，服务端要求 vision 时握手失败。surge / v2ray / URI 三个
+		-- 输出都写 flow，只有 clashmeta 漏了；parser_clash_yaml 也回读 flow，
+		-- 所以「Clash YAML → 导出 clashmeta」这条路径上 flow 会凭空消失。
+		if node.flow then
+			lines[#lines + 1] = "    flow: " .. esc_yaml(node.flow)
 		end
 	end
 

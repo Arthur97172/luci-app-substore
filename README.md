@@ -36,6 +36,11 @@
   `ip` / `ipv6` / `allowed-ips` / `reserved` / `persistent-keepalive` / `listen-port` / `mtu` / `dns`），
   以及 `amnezia-wg-option` 子块（Jc / Jmin / Jmax / S1–S4 / H1–H4 / I1–I5 / J1–J3 / Itime）；
   可直接粘贴 AmneziaWG 客户端导出的 `.conf` 文件内容
+- **解析容错**：`ssr://` 外层同时接受标准 base64 与 base64url 字母表；缺 `server`
+  或 `port` 不在 1–65535 的残缺节点在**解析阶段即丢弃**（否则会被写成 `server:` /
+  `port: 0`，mihomo 与 sing-box 会拒绝加载整份配置 —— 一个坏节点废掉整个订阅）；
+  含 `@` 的密码按**最后一个** `@` 切分；sing-box YAML 的嵌套 `tls:` 块
+  （含 `alpn` 列表与 `utls.fingerprint`）完整展开
 
 **节点处理**
 - 浏览节点，按分组 / 协议筛选、关键词搜索、排序
@@ -58,6 +63,8 @@
 - 15 种输出格式（全部实现）：Plain JSON、Stash、Clash.Meta / Mihomo YAML、Clash 原版、
   Surfboard、Surge、Surge Mac、Loon、Egern、Shadowrocket、Quantumult X、sing-box、
   V2Ray / Xray、V2Ray URI、WireGuard / AmneziaWG `.conf`
+  - **Clash.Meta / Mihomo**：完整输出传输参数（`ws-opts` / `grpc-opts` / `h2-opts`
+    的 path、host、服务名）与 vless 的 `flow`（XTLS Vision）
   - **Clash 原版**：面向 Dreamacro Clash / ClashX / Clash for Windows，自动过滤原版不支持的
     协议（vless / hysteria2 / hysteria / tuic / wireguard）
   - **WireGuard / AmneziaWG `.conf`**：wg-quick 单接口配置，含 `[Interface]` / `[Peer]` 与
@@ -68,6 +75,9 @@
       `route.final` 指向 `selector`，内置私网直连规则
     - V2Ray/Xray：节点出站 + `freedom`(direct) / `blackhole`(block) + `observatory` +
       `routing.balancers`（`leastPing` 自动选优），内置 `geoip:private` 直连与兜底分流
+      - 仅输出 Xray 支持的协议（vmess / vless / trojan / shadowsocks / socks / http）；
+        hysteria2 / hysteria / tuic / wireguard / ssr 没有对应的 outbound 类型，会被过滤
+        （写成 Xray 不认识的 `protocol` 会让它拒绝加载整份配置）
     - 刻意**不含 `inbounds` / `dns`**：这两项会绑定本地监听端口、覆盖你既有的 DNS 设置，
       请在你自己的配置里维护；把本输出合并进已有配置即可
     - ⚠️ 与 2.3.x 不兼容：2.3.x 输出的是仅含 `outbounds` 的片段，需要粘进已有配置使用；
@@ -83,18 +93,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.0-r1`）。
+> （当前 `2.6.1-r1`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.0-r1.ipk
+opkg install luci-app-substore-2.6.1-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.0-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.1-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。

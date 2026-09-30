@@ -2,6 +2,101 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.1-r1] - P1 批次缺陷修复（解析保真 / 输出合法性）
+
+本轮修复 2.6.0 审计表中 **P1 批次的 13 项缺陷**，另修复审计过程中实测确认的
+**4 项新缺陷**。所有修改均先做代码级审计、再用临时探针复现缺陷、修改后复测，
+并补齐回归测试（新增 `tests/p1_fixes_test.lua`，97 项断言）。未做任何推测性改动。
+
+### 解析保真（节点导入）
+
+- **trojan 密码未做 URL 解码**：`trojan://p%40ss%3Aword@host:443` 的密码被当成
+  字面量 `p%40ss%3Aword` 存下，认证必然失败。已补 `util.url_decode`。
+- **vmess classic JSON 忽略 `host` / `path`**：`vmess://base64({...})` 里的
+  `host`（ws Host 头）与 `path`（ws 路径）被静默丢弃，服务端按默认路径匹配失败。
+  现已保留；未提供时不会凭空造出字段。
+- **SSR 密码 base64 回退不可达**：密码字段的 base64 解码走了不可达分支，
+  明文密码会被解成乱码并写盘下发。已改用往返一致性判据的解码器。
+- **`ssr://` 外层不接受 base64url 字母表**（新发现）：`util.base64_decode` 会把
+  `-` / `_` 当非法字符**直接剔除**，于是外层用 base64url 编码的 `ssr://` 链接
+  少掉若干字符、整串解成乱码——server / port / 密码全错，且不报错。
+  已改用 `base64_url_decode`（对标准 base64 输入逐字节等价，严格更宽容）。
+- **userinfo 按首个 `@` 切分**：密码含未转义的 `@` 时（`hysteria2://p@ss@host:443`）
+  密码被截断、host 变成 `ss@1.2.3.4`。trojan / hysteria2 / hysteria / tuic
+  改为按**最后一个** `@` 切分。
+- **vless / trojan / vmess / hysteria2 / tuic / ss 缺 host·port 校验**：残缺节点会
+  被写成 `server: ` / `port: 0`，mihomo 与 sing-box 会**拒绝加载整份配置**——
+  一个节点废掉整个订阅。解析阶段即丢弃（port 必须落在 1..65535）。
+- **sing-box YAML 的嵌套 `tls:` map 被跳过**：`tls: {enabled, server_name, insecure}`
+  整层丢失，导出的 trojan/vmess/vless 静默退化成明文，hysteria2/tuic 更让客户端
+  以 `C.ErrTLSRequired` 拒绝启动。现已展开为 `security` / `sni` /
+  `skip-cert-verify` / `alpn` / `fp`。
+- **简易 YAML 解析器不支持嵌套序列**（新发现）：`tls.alpn:` 后跟 `- h2` 会让
+  映射收集器在该行立刻中断，**不只 alpn 丢失，排在它后面的 `utls.fingerprint`
+  也一并消失**。已新增序列收集逻辑（声明顺序置于映射收集器之前，
+  避免 Lua 局部函数 upvalue 捕获陷阱）。
+- **通用 JSON 节点忽略 `type` 字段、无协议白名单**：`type` 不再被忽略，改为按
+  权威映射表转成协议并消费掉；未知类型（`snell` / `ssh` / `shadowtls` 等）
+  直接丢弃，而不是兜底成 vmess 造出字段全错的假节点。
+- **Surge 段名大小写敏感**：`[PROXY]` / `[Server_Local]` 全大写段名不被识别，
+  而 `[` 开头的内容会被判成 JSON 数组，整份订阅报「JSON 解析失败」，一个节点都
+  拿不到。段名判定改为大小写不敏感。
+- **Surge / QX 未知协议无白名单**（H6 的 Surge 侧）：`A = snell, …` 会把
+  `proto="snell"` 透传进模型，输出端变成 sing-box 的 `type: "snell"` /
+  Xray 的 `protocol: "snell"` 这类非法取值。现与 Clash YAML 走同一张权威表。
+- **订阅列表文件含非法条目时崩溃**：`core.list()` 的 `pairs(meta)` 会抛
+  `table expected, got string`，订阅列表页直接 500；cron 路径更糟——
+  异常让整轮同步在打印统计前中断，而 `substore-cron.sh` 据此判为**成功**。
+  现在过滤坏条目、返回可用条目并带上损坏错误，写路径据此拒绝落盘
+  （避免下次保存把坏条目永久抹掉）。
+
+### 输出合法性
+
+- **`output_v2ray` 协议白名单**：原判定是「不等于 ssr」，于是 hysteria2 /
+  hysteria / tuic / wireguard 被写成 Xray 根本不认识的 `"protocol": "hysteria2"`，
+  凭据还被塞进无意义的 `users` 字段——Xray 解析到未知 protocol 会拒绝整份配置。
+  改为白名单（vmess / vless / trojan / shadowsocks / ss / socks / socks5 / http）。
+- **clashmeta 从不写 `flow`**：vless 的 `xtls-rprx-vision` 丢失，mihomo 按普通
+  vless 处理，服务端要求 vision 时握手失败。surge / v2ray / URI 三个输出都写
+  flow，只有 clashmeta 漏了；而 Clash YAML 解析器明确会回读 flow。
+- **clashmeta 丢弃 grpc / h2 传输参数**：只写 `network: grpc`，不写
+  `grpc-opts.grpc-service-name`，客户端用默认服务名去连、握手失败——与 ws 丢
+  path 同类。h2 同理，现按上游文档写 `h2-opts.host`（**列表**）与
+  `h2-opts.path`（标量）。服务名取自 `node.path`，与 v2ray 的 `serviceName`、
+  sing-box 的 `service_name` 同源。
+
+### 健壮性
+
+- **改名替换串里的 `%` 未转义**：`%` 后接非数字字符会被 gsub 静默吞掉
+  （`50%off` → `50off`），**结尾的 `%` 会注入一个 NUL 字节**
+  （`100%` → `100\0`）——节点名会写进节点文件并下发给所有客户端。
+  现已把字面 `%` 转义为 `%%`，`$1` 仍按捕获引用处理。
+- **修复自身引入的 `and/or` 三元陷阱**：`(cond) and nil or x` 在 cond 为真时得到
+  `nil`，再被 `or x` 兜回 `x`，等于没生效（正是代码里已注释警告过的坑）。
+  已改为显式 `if`。
+
+### 测试
+
+- 新增 `tests/p1_fixes_test.lua`：97 项断言覆盖上述全部修复，
+  每项都先在修改前复现缺陷、修改后断言修复行为。
+- 全量回归：39 个 Lua 测试文件 + `run_tests.lua`(47) + `cron_result_test.sh`(11)
+  全部通过，0 失败。
+- 版本号 2.6.0-r1 → 2.6.1-r1。
+
+### 已知未修复（待确认，本轮未改）
+
+- **H10 的丢更新（lost update）**：`load()` → `save()` 之间无任何锁，并发写会
+  互相覆盖。Lua 5.1 没有可用的原子锁原语（`os.rename` 覆盖语义无法 CAS、
+  无 `flock`、`io.open` 无 `"x"` 模式、无 `link()`），`mkdir` 方案有陈旧锁死锁
+  风险。建议作为已知限制记录，或引入 `nixio` 的 flock（本机无法验证）。
+- **M28 / M29（CSRF `post_ok()`、ACL）**：依赖 LuCI 框架运行时行为
+  （`test_post_security`、ACL 解析），本机无 LuCI 运行环境，无法验证，故未改。
+- **sing-box JSON 读取侧不读 `tls.utls.fingerprint`**：YAML 侧本轮已支持，
+  JSON 侧（`parser_json_config.parse_singbox_json`）仍不读，两者存在不一致。
+  属功能缺口而非回归，留待确认。
+- **sing-box YAML 读取侧不读传输参数**（ws/grpc/h2 的 path/host）：与
+  `parse_singbox_json` 的现状一致（两边都不读），属既有缺口，留待确认。
+
 ## [2.6.0-r1] - 协议覆盖补全与导入/输出保真修复
 
 本轮起因：用户报告「添加本地订阅 → 表单导入」的「类型」下拉框协议不全，
