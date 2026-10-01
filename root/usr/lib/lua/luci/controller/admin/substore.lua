@@ -90,6 +90,20 @@ local function read_cron_fields()
 	return cron_enable, cron_time
 end
 
+-- read subscription client type (User-Agent) from form, return ua string, err
+--
+-- 部分机场按 User-Agent 决定返回真实节点还是占位内容。表单提交的是
+-- 「预设 key（ua_preset）+ 自定义文本（ua_custom）」，这里解析成最终要存的 UA。
+-- 非法值必须回显（与规则校验同理）：静默存空会让用户以为设置生效了，
+-- 实际更新出来的仍是占位节点。
+local function read_ua_fields()
+	local http = require("luci.http")
+	local core = require("substore.core")
+	local ua, err = core.resolve_user_agent(fv(http, "ua_preset"), fv(http, "ua_custom"))
+	if not ua then return nil, err end
+	return ua
+end
+
 -- read subscription level rules from form, return rules table, err
 --
 -- 第二个返回值是**用户可见**的校验错误。目前只有重命名规则的正则需要校验：
@@ -135,8 +149,10 @@ function action_create()
 		-- 规则校验失败（如非法正则）必须回显，否则用户看到的是「规则没生效」
 		local rules, rules_err = read_rules_fields()
 		if not rules then return back_to_list(rules_err or "规则无效") end
+		local user_agent, ua_err = read_ua_fields()
+		if user_agent == nil then return back_to_list(ua_err or "订阅客户端类型无效") end
 		local id, err = core.add(name, url, {
-			proxy_enable = proxy_enable, proxy = proxy,
+			proxy_enable = proxy_enable, proxy = proxy, user_agent = user_agent,
 			cron_enable = cron_enable, cron_time = cron_time,
 			rules_enable = rules.rules_enable, proto_filter = rules.proto_filter,
 			keyword_include = rules.keyword_include, keyword_exclude = rules.keyword_exclude,
@@ -166,8 +182,11 @@ function action_save()
 		-- 规则校验失败（如非法正则）必须回显，否则用户看到的是「规则没生效」
 		local rules, rules_err = read_rules_fields()
 		if not rules then return back_to_list(rules_err or "规则无效") end
+		local user_agent, ua_err = read_ua_fields()
+		if user_agent == nil then return back_to_list(ua_err or "订阅客户端类型无效") end
 		local ok, err = core.save_meta(id, {
 			name = name, url = url, proxy_enable = proxy_enable, proxy = proxy,
+			user_agent = user_agent,
 			cron_enable = cron_enable, cron_time = cron_time,
 			rules_enable = rules.rules_enable, proto_filter = rules.proto_filter,
 			keyword_include = rules.keyword_include, keyword_exclude = rules.keyword_exclude,

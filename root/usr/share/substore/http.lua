@@ -170,6 +170,23 @@ end
 
 -- 校验并规范化代理地址：支持 http/https/socks4/socks5/socks5h，可含 user:pass@
 -- 空串 → ""（未使用）；合法 → 规范化地址；非法 → nil, err
+-- 部分机场按 User-Agent 区分客户端：同一个订单链接，只有用「该订单绑定的客户端」
+-- 的 UA 去请求才返回真实节点，其余 UA 得到一段占位内容（见 README「订阅客户端类型」）。
+-- 这里只做「能不能安全地放进命令行」的校验，不判断 UA 是否符合某家客户端。
+--
+-- 拒绝控制字符：UA 最终会以 `-A <ua>` 的形式进入 shell 命令，util.shq 的单引号
+-- 能挡住注入，但挡不住 UA 里的换行 —— curl 会把它当成**响应头之外的**新请求头
+-- 拼进去（header injection），且日志里也会被换行截断、伪造出额外行。
+-- 长度上限 256：真实 UA 都在 100 字符内，超长的只可能是构造出来的。
+function M.validate_user_agent(ua)
+	if ua == nil then return "" end
+	local s = util.trim(tostring(ua))
+	if s == "" then return "" end
+	if #s > 256 then return nil, "User-Agent 过长（最多 256 字符）" end
+	if s:find("%c") then return nil, "User-Agent 不能包含控制字符" end
+	return s
+end
+
 function M.parse_proxy(p)
 	local s = util.trim(p or "")
 	if s == "" then return "" end
@@ -480,6 +497,12 @@ local function fetch_curl(url, parsed, opts)
 	if opts.proxy and opts.proxy ~= "" then
 		proxy_arg = " -x " .. util.shq(opts.proxy)
 	end
+	-- 订阅客户端类型（User-Agent）。空 = 不传，curl 用自带的 curl/x.y.z。
+	-- 必须在**每一跳**都带上：重定向后的目标同样按 UA 决定返回什么内容。
+	local ua_arg = ""
+	if opts.user_agent and opts.user_agent ~= "" then
+		ua_arg = " -A " .. util.shq(opts.user_agent)
+	end
 	-- 临时文件名带随机标记：固定路径会让两个并发下载（如两个订阅的 cron 同时触发，
 	-- 或手动更新撞上 cron）互相覆盖，A 订阅存下 B 的内容且都不报错。
 	local tag = util.rnd_hex(8)
@@ -501,8 +524,8 @@ local function fetch_curl(url, parsed, opts)
 		-- -w 同时取 http_code 与 remote_ip：后者是真正建立连接的对端地址，
 		-- 用来在拿到响应体之前复核目标（见 verify_peer_ip）。
 		local cmd = string.format(
-			"curl -sS -o %s --max-time %d --connect-timeout %d --max-redirs 0 --max-filesize %d -D %s -w \"%%{http_code} %%{remote_ip}\"%s %s 2>%s",
-			util.shq(tmp), t, math.min(t, 10), max, util.shq(hdr), proxy_arg, util.shq(cur), util.shq(errf))
+			"curl -sS -o %s --max-time %d --connect-timeout %d --max-redirs 0 --max-filesize %d -D %s -w \"%%{http_code} %%{remote_ip}\"%s%s %s 2>%s",
+			util.shq(tmp), t, math.min(t, 10), max, util.shq(hdr), proxy_arg, ua_arg, util.shq(cur), util.shq(errf))
 		local p = io.popen(cmd)
 		local raw = util.trim(p and p:read("*a") or "")
 		if p then p:close() end
@@ -587,14 +610,19 @@ local function fetch_wget(url, parsed, opts)
 	local max, t = opts.max_size, opts.timeout
 	local proxy_env, perr = M.wget_proxy_env(opts.proxy)
 	if not proxy_env then return nil, perr end
+	-- busybox wget 用 -U 设置 User-Agent（已核对 busybox 1.37 的 --help）。
+	local ua_arg = ""
+	if opts.user_agent and opts.user_agent ~= "" then
+		ua_arg = " -U " .. util.shq(opts.user_agent)
+	end
 	local tag = util.rnd_hex(8)
 	local tmp = "/tmp/substore_dl_wget_" .. tag .. ".tmp"
 	local log = tmp .. ".log"
 	os.remove(tmp); os.remove(log)
 	-- -S 打印响应头（含整条重定向链），据此复检 SSRF；
 	-- 日志与响应体分流：体写 tmp，链写 log
-	local cmd = proxy_env .. string.format("wget -S -q -T %d -O %s %s >%s 2>&1",
-		t, util.shq(tmp), util.shq(url), util.shq(log))
+	local cmd = proxy_env .. string.format("wget -S -q -T %d%s -O %s %s >%s 2>&1",
+		t, ua_arg, util.shq(tmp), util.shq(url), util.shq(log))
 	local rc = os.execute(cmd)
 	-- 退出码必须看：wget 失败时可能已经写下半截响应体，只判断 size == 0
 	-- 会把残缺内容当成下载成功。
@@ -627,18 +655,21 @@ end
 
 -- 下载订阅内容。成功返回 body, headers, nil；失败返回 nil, nil, err
 -- opts.proxy 为可选代理地址（scheme://host:port），应由调用方用 parse_proxy 校验
+-- opts.user_agent 为可选的订阅客户端 User-Agent，应由调用方用 validate_user_agent 校验
 function M.download(url, opts)
 	opts = opts or {}
 	local max_size = opts.max_size or M.DEFAULT_MAX_SIZE
 	local timeout = opts.timeout or M.DEFAULT_TIMEOUT
 	local parsed = M.parse_url(url)
 	if not parsed then return nil, nil, "无效 URL" end
+	local ua, uaerr = M.validate_user_agent(opts.user_agent)
+	if not ua then return nil, nil, uaerr end
 	local ok, reason, unverified = M.check_public(parsed.host)
 	if not ok then return nil, nil, reason end
 	local tool = detect_tool()
 	if not tool then return nil, nil, "无可用下载工具 (curl/wget)" end
 	local body, headers = fetch(tool, url, parsed, { max_size = max_size, timeout = timeout, proxy = opts.proxy,
-		unverified = unverified })
+		user_agent = ua, unverified = unverified })
 	if not body then return nil, nil, headers end
 	return body, headers or {}, nil
 end

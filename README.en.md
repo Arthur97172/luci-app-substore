@@ -18,6 +18,11 @@ group them, then re-emit them in a format your client can consume.
   response header)
 - **Subscription proxy**: fetch through `http` / `https` / `socks4` / `socks5` /
   `socks5h`, for sources that cannot be reached directly
+- **Subscription client type**: the `User-Agent` sent when fetching, set per
+  subscription, with Clash Verge / v2rayN / Clash Party / FlClash presets and a
+  custom value. Some providers hand out nodes by UA — the same link only yields the
+  real nodes for its bound client; a wrong UA returns a "client incompatible"
+  placeholder (which still parses, but is nothing but fake `127.0.0.1:1080` nodes)
 - **Combined subscriptions**: merge any subset of existing subscriptions into a new
   one with its own name, token and link; it is recomputed when a source updates
 - **Local subscriptions**: paste node text directly (one format at a time,
@@ -72,18 +77,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.12-r1`).
+> [Makefile](Makefile) (currently `2.6.13-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.12-r1.ipk
+opkg install luci-app-substore-2.6.13-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.12-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.13-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.

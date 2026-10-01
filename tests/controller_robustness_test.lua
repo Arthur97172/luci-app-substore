@@ -93,6 +93,11 @@ local function core_reset()
 	CORE.sync = function() return true end
 	CORE.write_cron = function() end
 	CORE.cron_time_valid = function() return true end
+	-- 控制器在 read_ua_fields 里调用它解析「订阅客户端类型」（预设 key → UA 字符串）。
+	-- 与上面的 validate_rename_map 同理：stub 缺这个函数会让整条保存路径 nil 调用。
+	-- 这里返回 ""（不设置 UA），让用例聚焦各自要覆盖的字段。
+	CORE.resolve_user_agent = function() return "" end
+	CORE.UA_PRESETS = { { key = "clash-verge", label = "Clash Verge", ua = "clash-verge/v2.5.0" } }
 	CORE.generate_link = function() return "body", "text/plain", "f.txt" end
 	CORE.RULE_PROTOS = { "vmess", "trojan" }
 end

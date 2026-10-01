@@ -18,6 +18,10 @@
 - 每个订阅的剩余流量 / 剩余时长（解析 `subscription-userinfo` 响应头）
 - **订阅代理**：经 `http` / `https` / `socks4` / `socks5` / `socks5h` 代理下载订阅，
   用于订阅源直连失败时
+- **订阅客户端类型**：按订阅指定下载时发送的 `User-Agent`，内置 Clash Verge /
+  v2rayN / Clash Party / FlClash 预设，也可自定义。部分机场按 UA 下发节点 ——
+  同一个链接只有用绑定的客户端才解析得出真实节点，用错会得到「与您使用客户端不兼容」
+  的占位节点（能解析成功，但全是 `127.0.0.1:1080` 的假节点）
 - **组合订阅**：把任意子集的现有订阅合并成一个新订阅，拥有独立名称、token 与订阅链接；
   源订阅更新后组合自动重算
 - **本地订阅**：不填 URL，直接粘贴节点文本导入（一次一种格式，自动判定），
@@ -64,18 +68,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.12-r1`）。
+> （当前 `2.6.13-r1`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.12-r1.ipk
+opkg install luci-app-substore-2.6.13-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.12-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.13-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。

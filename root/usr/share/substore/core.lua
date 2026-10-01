@@ -7,7 +7,7 @@ local parser = require("substore.parser")
 
 local M = {}
 
-M.version = "2.6.12"
+M.version = "2.6.13"
 M.DATA_DIR = "/etc/substore"
 M.LIST_FILE = M.DATA_DIR .. "/subscriptions.json"
 M.NODES_DIR = M.DATA_DIR .. "/nodes"
@@ -28,6 +28,56 @@ M.TIMEOUT = 20
 -- 不含 socks5：解析阶段已把它归一成 socks（见 parser.lua 的说明）。
 M.RULE_PROTOS = { "vmess", "vless", "trojan", "shadowsocks", "ssr",
 	"hysteria2", "tuic", "hysteria", "wireguard", "socks" }
+
+-- 「订阅客户端类型」预设。部分机场（如 Allblue 加速器）按 User-Agent 区分客户端：
+-- 同一个订单链接，只有用**该订单绑定的客户端**的 UA 去请求才返回真实节点，
+-- 其它 UA 拿到的是「与您使用客户端不兼容」的占位内容 —— 表现为订阅能解析成功，
+-- 但只有 7 个指向 127.0.0.1:1080 的假节点。
+--
+-- 各 UA 字符串取自客户端源码，非猜测：
+--   clash-verge  clash-verge-rev  src-tauri/src/utils/network.rs  `clash-verge/v{版本}`
+--   v2rayn       v2rayN          ServiceLib/Common/Utils.cs      `{AppName}/{版本}`（无 v 前缀）
+--   clash-party  Clash Party     src/main/config/profile.ts      `mihomo.party/v{版本} (clash.meta)`
+--   flclash      FlClash         lib/common/package.dart         三段空格分隔，含 Platform/<os>
+-- 版本号取用户给出的**最低可用版本**；机场若提高门槛，用户可在「自定义」里改。
+-- 顺序即表单下拉的显示顺序，不要用 pairs 遍历。
+M.UA_PRESETS = {
+	{ key = "clash-verge", label = "Clash Verge", ua = "clash-verge/v2.5.0" },
+	{ key = "v2rayn",      label = "v2rayN",      ua = "v2rayN/7.22.0" },
+	{ key = "clash-party", label = "Clash Party", ua = "mihomo.party/v2.0.0 (clash.meta)" },
+	{ key = "flclash",     label = "FlClash",     ua = "FlClash/v0.8.93 clash-verge Platform/linux" },
+}
+
+local UA_BY_KEY = {}
+for _, p in ipairs(M.UA_PRESETS) do UA_BY_KEY[p.key] = p.ua end
+
+-- 把表单的 (预设 key, 自定义文本) 解析成最终要发送的 UA 字符串。
+-- 返回 "" 表示不设置（沿用下载工具自带的 UA），nil + err 表示输入非法。
+function M.resolve_user_agent(preset, custom)
+	preset = util.trim(preset or "")
+	if preset == "" then return "" end
+	local ua
+	if preset == "custom" then
+		ua = util.trim(custom or "")
+		-- 选了「自定义」却留空 = 明确要求不设置 UA，不是错误。
+		if ua == "" then return "" end
+	else
+		ua = UA_BY_KEY[preset]
+		if not ua then return nil, "未知的订阅客户端类型: " .. preset end
+	end
+	return http.validate_user_agent(ua)
+end
+
+-- 反向：把已存的 UA 字符串映射回预设 key（编辑页回显用）。
+-- 不在预设里的一律落到 "custom"，由调用方把原值填进自定义输入框。
+function M.ua_preset_of(ua)
+	local s = util.trim(ua or "")
+	if s == "" then return "" end
+	for _, p in ipairs(M.UA_PRESETS) do
+		if p.ua == s then return p.key end
+	end
+	return "custom"
+end
 
 local function id_is_valid(id)
 	return type(id) == "string" and id ~= "" and id:match("^[A-Za-z0-9_%-]+$") ~= nil
@@ -174,6 +224,7 @@ function M.add(name, url, opts)
 		token = util.rnd_hex(16),
 		proxy_enable = (opts.proxy_enable == true or opts.proxy_enable == "1") and "1" or "0",
 		proxy = util.trim(opts.proxy or ""),
+		user_agent = util.trim(opts.user_agent or ""),
 		cron_enable = (opts.cron_enable == true or opts.cron_enable == "1") and cron_time ~= "",
 		cron_time = cron_time,
 		rules_enable = (opts.rules_enable == true or opts.rules_enable == "1") and true or false,
@@ -204,7 +255,7 @@ function M.add_local(name, raw_content, local_mode, opts)
 		name = name, url = "", enabled = true,
 		node_count = 0, last_update = nil, error = "", format = "",
 		token = util.rnd_hex(16),
-		proxy_enable = "0", proxy = "",
+		proxy_enable = "0", proxy = "", user_agent = "",
 		cron_enable = false, cron_time = "",
 		rules_enable = (opts.rules_enable == true or opts.rules_enable == "1") and true or false,
 		proto_filter = util.trim(opts.proto_filter or ""),
@@ -387,7 +438,19 @@ function M.sync(id)
 	-- 日志不记录代理凭据（§39）
 	if proxy ~= "" then log("Using proxy " .. http.redact_proxy(proxy)) end
 
-	local content, headers, err = http.download(meta.url, { max_size = M.MAX_SIZE, timeout = M.TIMEOUT, proxy = proxy })
+	-- 订阅客户端类型（User-Agent）：部分机场按 UA 决定返回真实节点还是占位内容。
+	-- 与代理一样，**非法值必须明确失败**：静默忽略会让用户以为 UA 已生效，
+	-- 而实际拿到的是占位节点（§12 禁止 silent fallback）。
+	local ua, uaerr = http.validate_user_agent(meta.user_agent)
+	if not ua then
+		log("User-Agent invalid: " .. tostring(uaerr))
+		M.save_meta(id, { error = "User-Agent 无效: " .. tostring(uaerr), last_update = os.time() })
+		return nil, "User-Agent 无效: " .. tostring(uaerr)
+	end
+	if ua ~= "" then log("Using User-Agent " .. ua) end
+
+	local content, headers, err = http.download(meta.url, { max_size = M.MAX_SIZE, timeout = M.TIMEOUT,
+		proxy = proxy, user_agent = ua })
 	if not content then
 		-- 下载工具的报错可能回显含凭据的 URL，写日志与入库前先抹掉（§39）
 		local safe_err = http.scrub_credentials(err or "下载失败")
@@ -611,7 +674,7 @@ function M.add_combo(name, sources, opts)
 		name = name, url = "", enabled = true, combo = true, sources = srcs,
 		node_count = 0, last_update = nil, error = "", format = "",
 		token = util.rnd_hex(16),
-		proxy_enable = "0", proxy = "",
+		proxy_enable = "0", proxy = "", user_agent = "",
 		cron_enable = false, cron_time = "",
 		rules_enable = (opts.rules_enable == true or opts.rules_enable == "1") and true or false,
 		proto_filter = util.trim(opts.proto_filter or ""),

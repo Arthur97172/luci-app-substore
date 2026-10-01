@@ -2,6 +2,57 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.13-r1] - 新增「订阅客户端类型」（User-Agent）支持
+
+### 新增：按订阅指定下载用的 User-Agent
+
+**用户实测**：同一机场（Allblue 加速器，`8.217.0.49`）的 4 个订单链接，
+分别只有用 Clash Verge / v2rayN / Clash Party / FlClash 才解析得出节点；
+本应用只能解析出 7 个「描述信息」节点：
+
+```
+- name: 当前更新的订阅链接      type: ss  server: 127.0.0.1  port: 1080
+- name: 与您使用客户端不兼容     type: ss  server: 127.0.0.1  port: 1080
+- name: 请复制 curl/8.22.0 类型  type: ss  server: 127.0.0.1  port: 1080
+...（共 7 条，密码均为 00000000-0000-0000-0000-000000000000）
+```
+
+**根因**：机场按请求的 `User-Agent` 决定返回真实节点还是占位内容。本应用此前
+**完全不发送 UA**，curl 用的是自带的 `curl/x.y.z`，被机场判为「不兼容的客户端」，
+于是返回一段把提示语写进节点名的占位内容 —— 服务器把请求方的 UA 回显进了那句
+提示里（所以路由器上看到的是 `curl/8.22.0`，沙箱里看到的是 `curl/8.18.0`）。
+占位内容本身是**合法**的 `ss` 节点，所以解析不报错，症状是「更新成功但节点全不可用」。
+每个订单链接绑定**唯一**一种客户端：用错客户端的 UA 同样只拿到占位内容，
+不存在一个通用 UA 能同时适配四种链接。
+
+**修复**：新增按订阅的「订阅客户端类型」设置，下载时以 `-A`（curl）/ `-U`（busybox wget）
+发送对应 UA。四个预设的 UA 字符串**取自各客户端源码**（非猜测），版本号取用户给出的
+最低可用版本：
+
+| 预设 | User-Agent | 来源 |
+|------|-----------|------|
+| Clash Verge | `clash-verge/v2.5.0` | clash-verge-rev `src-tauri/src/utils/network.rs` |
+| v2rayN | `v2rayN/7.22.0` | v2rayN `ServiceLib/Common/Utils.cs`（无 `v` 前缀） |
+| Clash Party | `mihomo.party/v2.0.0 (clash.meta)` | Clash Party `src/main/config/profile.ts` |
+| FlClash | `FlClash/v0.8.93 clash-verge Platform/linux` | FlClash `lib/common/package.dart`（三段空格分隔） |
+
+另可选「自定义」自行填写。默认「不设置」= 保持原行为（发送下载工具自带的 UA）。
+
+**验证**：4 个链接各用对应预设，均解析出 **310 个 vless 节点**（Clash 系 UA 返回
+Clash YAML，v2rayN 返回 base64 URI 列表）；交叉验证用错预设仍是占位内容，
+不设 UA 仍是 7 个假节点。
+
+**安全**：UA 来自表单，属不可信输入。`http.validate_user_agent` 拒绝控制字符
+（换行会让 curl 把它当成额外请求头拼进去）与超过 256 字符的值；进入命令行前经
+`util.shq` 引用。与代理一致，**非法值明确失败而非静默忽略**（§12）：静默忽略会让
+用户以为 UA 已生效，实际拿到的仍是占位节点。
+
+**新增测试** `tests/user_agent_test.lua`（64 项，全部不触网）：UA 取值校验、
+`-A`/`-U` 确实进入命令行且经 shell 引用、**重定向的每一跳**都带 UA、预设解析与往返、
+`core.add`/`core.sync` 的存储与透传、非法 UA 不发起下载、以及「表单 → 控制器 →
+core」整条接线的端到端断言。已按反向验证确认：拆掉接线后对应断言确实失败
+（http 侧 6 项、控制器侧 5 项）。
+
 ## [2.6.12-r1] - 修复 [2.6.8-r1] 引入的「无法解析目标主机名」回归 + 格式下拉启用条件
 
 ### 修复：所有域名订阅在缺少 luci-lib-nixio 的设备上报「无法解析目标主机名」

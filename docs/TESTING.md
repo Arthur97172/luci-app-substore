@@ -21,6 +21,7 @@
 | `qx_tag_comma_test.lua` | QX 节点名含逗号时的整条丢弃 |
 | `dns_fallback_test.lua` | DNS 解析回退（nixio → nslookup）与连接时对端地址校验 |
 | `subscriptions_format_gate_test.lua` | 订阅列表页格式下拉的启用条件（真实渲染模板后断言） |
+| `user_agent_test.lua` | 订阅客户端类型（User-Agent）：取值校验、`-A`/`-U` 进入命令行、重定向每一跳带 UA、预设解析、core 透传、控制器接线 |
 
 运行全部：`for f in tests/*.lua; do lua5.1 "$f" || exit 1; done`
 
