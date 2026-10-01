@@ -132,18 +132,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.7-r1`).
+> [Makefile](Makefile) (currently `2.6.8-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.7-r1.ipk
+opkg install luci-app-substore-2.6.8-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.7-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.8-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.
@@ -222,11 +222,14 @@ Target-device verification is required for the LuCI UI and cron behaviour — se
 
 ## Security
 
-SSRF protection (private / reserved / link-local ranges rejected), protocol
-whitelisting, response size & timeout limits, command-injection defence
-(whitelisted parsing + shell quoting), token-based access control on the public
-download endpoint, and no credentials in logs. See
-[docs/SECURITY.md](docs/SECURITY.md).
+SSRF protection (private / reserved / link-local ranges rejected; a hostname that
+**fails to resolve is rejected** rather than allowed, so "unresolvable ⇒ pass" is not
+a bypass), protocol whitelisting and port range validation (1–65535), response size &
+timeout limits, download temp files removed on every exit path (`/tmp` is a tmpfs),
+command-injection defence (whitelisted parsing + shell quoting, plus probe targets
+starting with `-` rejected — busybox `getopt` would read them as options),
+token-based access control on the public download endpoint, and no credentials in
+logs. See [docs/SECURITY.md](docs/SECURITY.md).
 
 ## License
 
