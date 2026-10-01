@@ -2,6 +2,72 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.4-r1] - P2 批次二：wg-quick 导入健壮性与 IPv6 内网判定
+
+P2 批次二，修 `parser.lua` 的五项缺陷（审计表 M9 / L20 / L16 / L17 / L18）。
+每项均先复现、后修改，并新增回归测试。
+
+### M9 wg-quick `.conf` 一个坏 `[Peer]` 废掉整份文件
+
+- **首个失败对端即中止**：`if not host … then return nil, … end` 位于
+  `for _, p in ipairs(peers)` **循环体内**，于是第一个缺 `Endpoint`（或
+  `Endpoint` 解析不出端口）的 `[Peer]` 会让整份 `.conf` 返回 `nil`，
+  同文件里其它完好的对端全部丢失。现在只跳过该对端；若一个可用对端都没有
+  （`#peers > 0` 已保证走不到「没有 [Peer]」分支），返回错误而**不是空列表** ——
+  空列表会被上层当成「解析成功但 0 节点」的静默失败。
+- **不剥行内注释**：行扫描只跳**整行** `#` / `;` 注释，而 wg-quick 的
+  `parse_options` 用 `stripped="${line%%\#*}"`，即从**第一个** `#` 起全部丢弃
+  （不要求 `#` 前有空白）。于是 `Endpoint = 1.2.3.4:51820 # 备用` 会把
+  `# 备用` 当成值的一部分，`split_hostport` 取不到端口，同样整份作废。
+  现对齐 wg-quick 语义做行内剥离；`;` 按上游行为**不**作注释符，
+  仅保留本实现原有的整行容忍。
+
+### L20 多 `[Peer]` 时数组字段被所有节点共享
+
+- `for k, v in pairs(common) do out[k] = v end` 是浅拷贝，而 `common.dns`
+  （多值时为数组）与 `common.reserved`（恒为数组）是 **table**，于是所有生成的
+  节点指向**同一个表** —— 按节点编辑 DNS 会同时改到全部节点。紧邻的
+  `amnezia-wg-option` 子块本就做了副本（注释还专门说明了这个隐患），这两个漏了。
+  现统一走一层表拷贝。
+
+### L16 `parse_local_link` 丢掉 query 与 userinfo
+
+- **无路径时 query 全丢**：authority 用 `^([^/]*)` 切分，`?` 不在排除集内，
+  于是 `http://host:port?target=ClashMeta&name=Foo` 的 authority 变成
+  `host:port?target=ClashMeta&name=Foo` —— `host` 被污染，`target` / `name` /
+  `uid` 全部丢失。现改为 `^([^/?]*)`。
+- **不剥 userinfo**：`detect_local_link` 一直会剥 `user@`，此处漏了。
+  现同样剥离（按**最后一个** `@`，与 M10 的约定一致）。
+
+### L17 `is_private_host` 的 IPv6 判定可被等价写法绕过
+
+- 旧实现拿字符串比前缀（`^::` / `^f[cd]` / `^fe[89ab]`）并只对 `^0*` 做一次
+  去零，于是 `[0::1]`、`[0000::1]`、`[0:0:0:0:0:0:0:1]`（同一个回环地址的
+  不同写法）**全部被判成公网**，而 `[::ffff:8.8.8.8]` 反被判成内网。
+  现先把 IPv6 字面量**展开成 8 组 16 位数值**（含 `::` 压缩、zone id、
+  嵌入式 IPv4 写法）再判定：`::` / `::1`、IPv4 映射地址按 IPv4 规则递归判定、
+  ULA `fc00::/7`、链路本地 `fe80::/10`。该函数目前未被生产代码接线
+  （仅 `detect_local_link` 调用，而后者只被测试引用），属**潜在** SSRF 缺口，
+  非当前可利用路径。
+
+### L18 纯空白 / 只有 BOM 的内容报「无法识别的订阅格式」
+
+- `M.detect` 会 trim 并去 BOM 后判为 `empty`，而 `M.parse` 只挡住了完全空串
+  （`content == ""`），`format == "empty"` 不匹配任何分支，于是掉到末尾报
+  「无法识别的订阅格式」。内容确实是空的，不是格式不认识 —— 提示误导。
+  现返回与空串一致的 `{ nodes = {}, format = "empty" }`。
+
+### 测试
+
+- `tests/wireguard_conf_test.lua` 新增 23 项断言（行内注释、坏 `[Peer]` 跳过、
+  全部对端不可用报错、多对端数组字段不共享）。
+- `tests/parser_local_link_test.lua` 新增 28 项断言（无路径 query、userinfo、
+  IPv6 内网判定的 16 种写法与 4 种公网反例、空白 / BOM 内容）。
+- **反向验证**：把两个测试文件指向 `HEAD` 版 `parser.lua` 重跑，
+  新增断言分别失败 16 项 / 13 项，确认它们确实覆盖了缺陷而非恒真。
+- 全量回归：40 个 Lua 测试文件（1747 项断言）+ `cron_result_test.sh`(11) 全部通过。
+- 版本号 2.6.3-r1 → 2.6.4-r1。
+
 ## [2.6.3-r1] - P2 批次一：JSON 编解码保真与主机名拆分
 
 P2 批次一，修 `util.lua` 的三项缺陷（审计表 M13 / M14 / L13）。

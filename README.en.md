@@ -47,7 +47,11 @@ group them, then re-emit them in a format your client can consume.
   are dropped **at parse time** (otherwise they become `server:` / `port: 0`, which makes
   mihomo and sing-box refuse to load the whole file — one bad node kills a subscription);
   passwords containing `@` are split on the **last** `@`; sing-box YAML's nested `tls:`
-  block (including the `alpn` list and `utls.fingerprint`) is fully expanded
+  block (including the `alpn` list and `utls.fingerprint`) is fully expanded; wg-quick
+  `.conf` supports inline `#` comments (matching wg-quick's own splitting semantics),
+  and a single bad `[Peer]` skips only itself instead of discarding the whole file;
+  whitespace-only content is treated as an empty subscription rather than reported as
+  an unrecognised format
 
 **Node processing**
 - Browse nodes, filter by group / protocol, keyword search, sort
@@ -108,18 +112,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.3-r1`).
+> [Makefile](Makefile) (currently `2.6.4-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.3-r1.ipk
+opkg install luci-app-substore-2.6.4-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.3-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.4-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.

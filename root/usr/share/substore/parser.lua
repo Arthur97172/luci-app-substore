@@ -620,8 +620,15 @@ local function parse_wireguard_conf(content)
 	local section = nil
 	for line in content:gmatch("[^\r\n]+") do
 		local s = util.trim(line)
-		if s == "" or s:sub(1, 1) == "#" or s:sub(1, 1) == ";" then
-			-- 空行 / 注释
+		-- 行内注释：wg-quick 的 parse_options 用 `stripped="${line%%\#*}"`，即从
+		-- **第一个** # 起全部丢弃（不要求 # 前有空白）。此处对齐同一语义：否则
+		-- `Endpoint = 1.2.3.4:51820 # 备用` 会把 "# 备用" 当成值的一部分，
+		-- split_hostport 取不到端口，整份 .conf 因此作废。
+		-- wg-quick 不把 ; 当注释符（; 是本实现额外容忍的写法），故 ; 只按整行
+		-- 注释处理，不参与行内剥离。
+		s = util.trim((s:gsub("#.*$", "")))
+		if s == "" or s:sub(1, 1) == ";" then
+			-- 空行 / 纯注释行
 		elseif s:sub(1, 1) == "[" then
 			local name = s:match("^%[%s*(.-)%s*%]")
 			name = name and name:lower() or ""
@@ -696,40 +703,54 @@ local function parse_wireguard_conf(content)
 		end
 	end
 
+	-- 一层的表拷贝。common 里的 dns / reserved 是数组、awg 是子表，都必须按节点
+	-- 各拿一份：浅拷贝会让所有节点共享同一个表，之后任何一处改动（例如按节点编辑
+	-- DNS）会同时改到全部节点。
+	local function copy1(t)
+		local o = {}
+		for k, v in pairs(t) do o[k] = v end
+		return o
+	end
+
 	local nodes = {}
 	for _, p in ipairs(peers) do
 		local host, port = util.split_hostport(p["endpoint"] or "")
-		if not host or host == "" or not port then return nil, "bad wireguard conf: no endpoint" end
+		-- 单个 [Peer] 缺 Endpoint（或 Endpoint 解析不出端口）只跳过它自己：
+		-- 旧实现直接 return nil，一个坏段就让整份 .conf 作废，同文件里其它完好的
+		-- 对端全部丢失 —— 与「一个坏节点不该废掉整个订阅」同一原则。
+		if host and host ~= "" and port then
+			local out = {}
+			for k, v in pairs(common) do
+				if type(v) == "table" then out[k] = copy1(v) else out[k] = v end
+			end
+			out.server = host
+			out.port = tonumber(port)
+			out["public-key"] = p["publickey"]
+			out["pre-shared-key"] = p["presharedkey"]
+			out["persistent-keepalive"] = tonumber(p["persistentkeepalive"])
 
-		local out = {}
-		for k, v in pairs(common) do out[k] = v end
-		out.server = host
-		out.port = tonumber(port)
-		out["public-key"] = p["publickey"]
-		out["pre-shared-key"] = p["presharedkey"]
-		out["persistent-keepalive"] = tonumber(p["persistentkeepalive"])
+			-- AllowedIPs 拆分数组
+			local allowed = {}
+			for a in (p["allowedips"] or ""):gmatch("[^,]+") do
+				a = util.trim(a)
+				if a ~= "" then allowed[#allowed + 1] = a end
+			end
+			if #allowed > 0 then out["allowed-ips"] = allowed end
 
-		-- AllowedIPs 拆分数组
-		local allowed = {}
-		for a in (p["allowedips"] or ""):gmatch("[^,]+") do
-			a = util.trim(a)
-			if a ~= "" then allowed[#allowed + 1] = a end
+			-- [Peer] 段的 AmneziaWG 参数（AdvancedSecurity）不在此处解析：
+			-- 它属于 [Peer] 段，而本项目的 amnezia-wg-option 只对应 [Interface] 段，
+			-- 合并进来会在导出时被写到 [Interface] 下（错误段落）。宁可不支持，
+			-- 也不要产出一份键位置错误的 .conf（§110）。
+			if next(awg) then out["amnezia-wg-option"] = copy1(awg) end
+
+			nodes[#nodes + 1] = node.normalize(out)
 		end
-		if #allowed > 0 then out["allowed-ips"] = allowed end
-
-		-- [Peer] 段的 AmneziaWG 参数（AdvancedSecurity）不在此处解析：
-		-- 它属于 [Peer] 段，而本项目的 amnezia-wg-option 只对应 [Interface] 段，
-		-- 合并进来会在导出时被写到 [Interface] 下（错误段落）。宁可不支持，
-		-- 也不要产出一份键位置错误的 .conf（§110）。
-		-- 每个节点各拿一份副本：共享同一个表会让后续修改一处影响全部节点。
-		if next(awg) then
-			local o = {}
-			for k, v in pairs(awg) do o[k] = v end
-			out["amnezia-wg-option"] = o
-		end
-
-		nodes[#nodes + 1] = node.normalize(out)
 	end
+
+	-- 一个可用 [Peer] 都没有时报错。此处 #peers > 0 已由上面保证，走到这里说明
+	-- 每个 [Peer] 都缺 Endpoint。不能返回空列表：空列表会被上层当成「解析成功但
+	-- 0 节点」，用户看到更新成功却一个节点都没有（H4/H5 的静默失败形态）。
+	if #nodes == 0 then return nil, "bad wireguard conf: no usable [Peer] endpoint" end
 
 	return nodes
 end
@@ -1125,20 +1146,89 @@ end
 
 -- ---------- 局域网订阅链接 ----------
 
+-- 把 IPv6 字面量展开成 8 组 16 位数值（仅用于内网判定）；无法解析时返回 nil。
+-- 必须展开而不是比字符串前缀：`::1` / `0::1` / `0000::1` / `0:0:0:0:0:0:0:1`
+-- 是同一个地址的不同写法，前缀比较会全部漏判（旧实现即如此，`[0::1]` 被判成公网）。
+local function expand_v6(s)
+	s = s:match("^([^%%]*)") or s -- 丢弃 zone id（fe80::1%eth0）
+	local tail4
+	local head, a, b, c, d = s:match("^(.*):(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+	if head then
+		a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
+		if a > 255 or b > 255 or c > 255 or d > 255 then return nil end
+		tail4 = { a * 256 + b, c * 256 + d }
+		s = head
+	end
+
+	local function collect(part)
+		local out = {}
+		for g in part:gmatch("[^:]+") do
+			if #g > 4 or not g:match("^%x+$") then return nil end
+			out[#out + 1] = tonumber(g, 16)
+		end
+		return out
+	end
+
+	local groups = {}
+	local left, right = s:match("^(.*)::(.*)$")
+	if left then
+		if left:find("::", 1, true) or right:find("::", 1, true) then return nil end
+		local lg, rg = collect(left), collect(right)
+		if not lg or not rg then return nil end
+		local zeros = 8 - #lg - #rg - (tail4 and 2 or 0)
+		if zeros < 1 then return nil end
+		for i = 1, #lg do groups[#groups + 1] = lg[i] end
+		for _ = 1, zeros do groups[#groups + 1] = 0 end
+		for i = 1, #rg do groups[#groups + 1] = rg[i] end
+	else
+		local flat = collect(s)
+		if not flat then return nil end
+		for i = 1, #flat do groups[#groups + 1] = flat[i] end
+	end
+	if tail4 then
+		groups[#groups + 1] = tail4[1]
+		groups[#groups + 1] = tail4[2]
+	end
+	if #groups ~= 8 then return nil end
+	return groups
+end
+
 -- 判断主机是否为内网 / 回环 / 链路本地地址（SSRF 防护）
 local function is_private_host(host)
 	if not host then return false end
 	host = host:lower()
-	if host == "localhost" or host == "::" then return true end
+	if host == "localhost" then return true end
 	-- IPv6：去掉方括号
 	local v6 = host:match("^%[([^%]]+)%]$")
 	if v6 then host = v6 end
 	if host:find(":", 1, true) then
-		local h = host:gsub("^0*", "")
-		if h == "" or h == "1" then return true end -- :: 或 ::1
-		return host:match("^::") ~= nil
-			or host:match("^f[cd]") ~= nil
-			or host:match("^fe[89ab]") ~= nil
+		local g = expand_v6(host)
+		if not g then return false end
+		-- 未指定地址 :: 与回环 ::1（含 0::1 / 0000::1 / 0:0:0:0:0:0:0:1 等写法）
+		local all_zero = true
+		for i = 1, 7 do
+			if g[i] ~= 0 then
+				all_zero = false
+				break
+			end
+		end
+		if all_zero and g[8] <= 1 then return true end
+		-- IPv4 映射 / 兼容地址（::ffff:a.b.c.d、::a.b.c.d）按 IPv4 规则判定
+		local mapped = true
+		for i = 1, 5 do
+			if g[i] ~= 0 then
+				mapped = false
+				break
+			end
+		end
+		if mapped and (g[6] == 0 or g[6] == 0xffff) then
+			return is_private_host(string.format("%d.%d.%d.%d",
+				math.floor(g[7] / 256), g[7] % 256, math.floor(g[8] / 256), g[8] % 256))
+		end
+		-- ULA fc00::/7 与链路本地 fe80::/10
+		if g[1] >= 0xfc00 and g[1] <= 0xfdff then return true end
+		if g[1] >= 0xfe80 and g[1] <= 0xfebf then return true end
+		return false
 	end
 	local a, b, c, d = host:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
 	if not a then return false end
@@ -1181,8 +1271,16 @@ function M.parse_local_link(url)
 	if not scheme then return nil end
 	scheme = scheme:lower()
 
-	local authority, remainder = rest:match("^([^/]*)(.*)$")
+	-- authority 止于 / 或 ?：`http://host?target=x` 这种「没有路径、直接跟 query」
+	-- 的写法，旧模式 `[^/]*` 会把 "host?target=x" 整串当成 authority，
+	-- 于是 host 变成 "host?target=x"、query 全丢（target/name/uid 都没了）。
+	local authority, remainder = rest:match("^([^/?]*)(.*)$")
 	if authority == nil then authority, remainder = rest, "" end
+
+	-- 去掉 userinfo@（detect_local_link 一直这么做，此处此前漏了）
+	if authority:find("@", 1, true) then
+		authority = authority:match("^.*@(.*)$") or ""
+	end
 
 	-- 提取 host 与 port
 	local host, port
@@ -1227,7 +1325,13 @@ end
 function M.parse(content)
 	if not content or content == "" then return { nodes = {}, format = "empty" } end
 	local format = M.detect(content)
-	if format == "uri" then
+	if format == "empty" then
+		-- 纯空白 / 只有 BOM 的内容：detect 会 trim 并去 BOM 后判为 empty，而上面的
+		-- `content == ""` 只挡住了完全空串。没有这个分支时，一份「全是空白」的订阅
+		-- 会一路掉到末尾报「无法识别的订阅格式」—— 对用户是误导，内容确实是空的，
+		-- 不是格式不认识。与空串保持同一返回形态（0 节点、格式 empty）。
+		return { nodes = {}, format = "empty" }
+	elseif format == "uri" then
 		return { nodes = parse_lines(split_lines(content)), format = "uri" }
 	elseif format == "base64" then
 		-- 兼容标准 base64 与 base64url（- _ 无 padding）：base64_url_decode 两者皆可

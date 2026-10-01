@@ -40,7 +40,9 @@
   或 `port` 不在 1–65535 的残缺节点在**解析阶段即丢弃**（否则会被写成 `server:` /
   `port: 0`，mihomo 与 sing-box 会拒绝加载整份配置 —— 一个坏节点废掉整个订阅）；
   含 `@` 的密码按**最后一个** `@` 切分；sing-box YAML 的嵌套 `tls:` 块
-  （含 `alpn` 列表与 `utls.fingerprint`）完整展开
+  （含 `alpn` 列表与 `utls.fingerprint`）完整展开；wg-quick `.conf` 支持行内
+  `#` 注释（与 wg-quick 自身的切分语义一致），且单个坏 `[Peer]` 只跳过它自己、
+  不作废整份文件；纯空白内容按「空订阅」处理，而非报「无法识别的订阅格式」
 
 **节点处理**
 - 浏览节点，按分组 / 协议筛选、关键词搜索、排序
@@ -93,18 +95,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.3-r1`）。
+> （当前 `2.6.4-r1`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.3-r1.ipk
+opkg install luci-app-substore-2.6.4-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.3-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.4-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。
