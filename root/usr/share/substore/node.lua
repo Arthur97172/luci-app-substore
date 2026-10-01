@@ -167,17 +167,56 @@ local function wg_public_key(n)
 	return n["public-key"] or n.public_key or n["peer-public-key"] or n.peer_public_key
 end
 
--- 去重：按 proto+server+port 唯一。
--- WireGuard/AmneziaWG 例外：同一个 endpoint 上不同 peer 公钥是**不同**的节点，
--- 只按 server+port 去重会把它们错误合并（§32/§43），因此把公钥并入去重键。
+-- 去重键的「身份」部分：同一 server:port 上的**不同账号是不同节点**。
+--
+-- 旧键只有 proto|server|port，于是「同一入口的多账号」被当成重复，静默删掉
+-- 其中一个 —— 那是数据丢失而不是去重（与下面 WireGuard 公钥的说明同理）。
+-- 这里取各协议里真正代表账号身份的字段；未知协议不猜，退回空身份。
+local function identity_key(n)
+	local proto = (n.proto or ""):lower()
+	if proto == "ss" then proto = "shadowsocks" end
+	if proto == "wg" then proto = "wireguard" end
+	if proto == "socks5" then proto = "socks" end
+
+	-- WireGuard 的身份是 peer 公钥（同一个 endpoint 上不同公钥是不同节点）
+	if proto == "wireguard" then
+		return tostring(wg_public_key(n) or "")
+	end
+	if proto == "shadowsocks" then
+		return tostring(n.method or n.cipher or "") .. "\1" .. tostring(n.password or "")
+	end
+	if proto == "ssr" then
+		-- SSR 的加密方式、密码、协议插件、混淆方式是四段独立参数，任一不同
+		-- 都是不同的节点
+		return tostring(n.method or n.cipher or "") .. "\1" .. tostring(n.password or "")
+			.. "\1" .. tostring(n.protocol or "") .. "\1" .. tostring(n.obfs or "")
+	end
+	if proto == "vmess" or proto == "vless" then
+		return tostring(n.uuid or "")
+	end
+	if proto == "tuic" then
+		return tostring(n.uuid or "") .. "\1" .. tostring(n.password or "")
+	end
+	if proto == "socks" or proto == "http" then
+		return tostring(n.username or "") .. "\1" .. tostring(n.password or "")
+	end
+	if proto == "trojan" or proto == "hysteria" or proto == "hysteria2" then
+		return tostring(n.password or "")
+	end
+	return ""
+end
+
+-- 去重：按 proto+server+port+身份唯一。
+-- proto 先归一：`wg` 与 `wireguard` 是同一协议，不归一的话同一条链路以两种
+-- 写法出现时不会被去重。
 function M.dedup(nodes)
 	local seen = {}
 	local out = {}
 	for _, n in ipairs(nodes) do
-		local key = (n.proto or "") .. "|" .. (n.server or "") .. "|" .. tostring(n.port or "")
-		if n.proto == "wireguard" or n.proto == "wg" then
-			key = key .. "|" .. tostring(wg_public_key(n) or "")
-		end
+		local proto = (n.proto or ""):lower()
+		if proto == "wg" then proto = "wireguard" end
+		local key = proto .. "|" .. (n.server or "") .. "|" .. tostring(n.port or "")
+			.. "|" .. identity_key(n)
 		if not seen[key] then
 			seen[key] = true
 			out[#out + 1] = n

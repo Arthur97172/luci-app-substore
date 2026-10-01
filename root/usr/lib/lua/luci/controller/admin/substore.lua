@@ -65,8 +65,10 @@ end
 -- read subscription level rules from form, return rules table
 local function read_rules_fields()
 	local http = require("luci.http")
+	local core = require("substore.core")
 	local proto_list = {}
-	for _, p in ipairs({"vmess","vless","trojan","shadowsocks","ssr","hysteria2","tuic","hysteria","wireguard","socks"}) do
+	-- 协议清单来自 core.RULE_PROTOS，与表单模板共用一份（见该常量的说明）
+	for _, p in ipairs(core.RULE_PROTOS) do
 		if http.formvalue("proto_filter_"..p) then proto_list[#proto_list+1]=p end
 	end
 	local rules_enable = http.formvalue("rules_enable") or "0"

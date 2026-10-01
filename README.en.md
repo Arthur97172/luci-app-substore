@@ -60,9 +60,14 @@ group them, then re-emit them in a format your client can consume.
 - Per-node edit / delete (Actions column); header checkbox selects all, then the Delete
   button batch-deletes the selection; the Refresh button reloads the list keeping the
   current filters
-- Per-subscription rules applied on every update:
+- Per-subscription rules applied on every update (available on all three forms:
+  subscription / combination / local subscription):
   - keyword include / exclude (comma-separated, multi-keyword)
-  - deduplication
+  - protocol filter (tick the protocols to keep; none ticked = no filtering)
+  - deduplication (multiple accounts on the same endpoint are not merged: the
+    dedup key includes each protocol's own credentials)
+  - rename (one rule per line: `OLD=NEW` exact, `PATTERN -> REPLACEMENT` regex,
+    `{server}_{port}_{proto}` placeholder template)
 
 **Network probing** (Nodes page)
 - Ping (ICMP latency), TCPing (connect latency), URL test (HTTP latency)
@@ -127,18 +132,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.5-r1`).
+> [Makefile](Makefile) (currently `2.6.6-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.5-r1.ipk
+opkg install luci-app-substore-2.6.6-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.5-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.6-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.

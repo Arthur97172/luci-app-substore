@@ -49,9 +49,12 @@
 - 节点分组：「分组」列单元格内直接修改单节点分组（XHR 无刷新保存），配合「分组:」下拉筛选
 - 单节点编辑 / 删除（行尾「操作」列）；表头复选框全选、行复选框勾选后点「删除」批量删除；
   「刷新」按钮重载列表（保留当前筛选条件）
-- 每次更新时生效的按订阅规则：
+- 每次更新时生效的按订阅规则（订阅 / 组合 / 本地订阅三种表单均提供）：
   - 关键词包含 / 排除（逗号分隔，支持多关键词）
-  - 去重
+  - 协议筛选（勾选保留哪些协议，全不勾选 = 不筛选）
+  - 去重（同一入口的多账号不会被误合并：去重键含各协议各自的凭据）
+  - 重命名（每行一条：`旧名=新名` 精确匹配、`模式 -> 替换` 正则替换、
+    `{server}_{port}_{proto}` 占位符模板）
 
 **网络探测**（节点页）
 - Ping（ICMP 延迟）、TCPing（连接延迟）、URL 测试（HTTP 延迟）
@@ -105,18 +108,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.5-r1`）。
+> （当前 `2.6.6-r1`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.5-r1.ipk
+opkg install luci-app-substore-2.6.6-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.5-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.6-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。

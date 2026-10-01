@@ -182,7 +182,8 @@ function M.parse_proxy(p)
 		return nil, "代理用户名/密码含非法字符"
 	end
 	local host, port
-	if hostport:sub(1, 1) == "[" then
+	local bracketed = hostport:sub(1, 1) == "["
+	if bracketed then
 		host = hostport:match("^%[([%w%.%-%:]+)%]")
 		port = hostport:match("^%[.*%]%:(%d+)$")
 	else
@@ -192,10 +193,22 @@ function M.parse_proxy(p)
 	if not host or host == "" or not host:match("^[%w%.%-%:]+$") then
 		return nil, "代理主机无效"
 	end
+	-- 未加方括号的 IPv6 字面量：RFC 3986 要求 IPv6 主机必须写成 [addr]。
+	-- 没有方括号时 `::1:1080` 既可能是「地址 ::1 + 端口 1080」，也可能就是
+	-- 地址 `::1:1080` —— 无法判定。与其猜一个再拼出一条 curl -x 解析不了的
+	-- 代理串（静默失效），不如明确报错让用户补上方括号。
+	if not bracketed and select(2, host:gsub(":", "")) > 1 then
+		return nil, "IPv6 代理地址必须加方括号，例如 http://[::1]:1080"
+	end
 	if port then
 		port = tonumber(port)
 		if not port or port < 1 or port > 65535 then return nil, "代理端口无效" end
 	end
+	-- IPv6 字面量必须把方括号拼回去：上面为做主机校验把 [::1] 拆成了 ::1，
+	-- 直接拼会得到 `http://::1:1080` —— 冒号歧义，curl -x 与 http_proxy= 都
+	-- 解析不了（curl 会把 `::1:1080` 整个当成主机名），代理静默失效。
+	-- 单个冒号才是 host:port 的分隔符。
+	if host:find(":", 1, true) then host = "[" .. host .. "]" end
 	local r = scheme .. "://"
 	if userinfo ~= "" then r = r .. userinfo .. "@" end
 	r = r .. host

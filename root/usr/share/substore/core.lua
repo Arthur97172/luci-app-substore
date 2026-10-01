@@ -7,7 +7,7 @@ local parser = require("substore.parser")
 
 local M = {}
 
-M.version = "2.6.5"
+M.version = "2.6.6"
 M.DATA_DIR = "/etc/substore"
 M.LIST_FILE = M.DATA_DIR .. "/subscriptions.json"
 M.NODES_DIR = M.DATA_DIR .. "/nodes"
@@ -15,6 +15,14 @@ M.CRON_FILE = "/etc/cron.d/substore"
 
 M.MAX_SIZE = 10 * 1024 * 1024 -- 10MB
 M.TIMEOUT = 20
+
+-- 「协议筛选」的可选协议，用的是节点模型里的**规范**协议名（node.normalize 的产物）。
+-- 控制器（read_rules_fields）与三个表单模板共用这一份：两边各写一份的话，
+-- 一旦漂移，勾选框就会生成一个永远匹配不到任何节点的 proto_filter，
+-- 而症状是「勾了没用」—— 不会报错，最难查。
+-- 不含 socks5：解析阶段已把它归一成 socks（见 parser.lua 的说明）。
+M.RULE_PROTOS = { "vmess", "vless", "trojan", "shadowsocks", "ssr",
+	"hysteria2", "tuic", "hysteria", "wireguard", "socks" }
 
 local function id_is_valid(id)
 	return type(id) == "string" and id ~= "" and id:match("^[A-Za-z0-9_%-]+$") ~= nil
