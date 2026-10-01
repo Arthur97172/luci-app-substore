@@ -366,6 +366,9 @@ function action_node_set_group()
 		http.write(util.json_encode({ ok = false, err = "write failed" }))
 		return
 	end
+	-- 与 node_save / node_delete 一致：group 是组合订阅筛选与重命名规则的输入，
+	-- 改了不同步组合的话，组合的下载链接会一直吐旧分组的数据。
+	core.refresh_combos(id)
 	http.write(util.json_encode({ ok = true }))
 end
 

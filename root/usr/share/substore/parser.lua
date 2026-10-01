@@ -1322,6 +1322,23 @@ function M.parse_local_link(url)
 end
 
 -- 解析订阅内容，返回 { nodes = {...}, format = "..." } 或 nil, err
+-- 统一兜底：丢弃残缺节点（缺 server，或端口为空 / 不在 1–65535）。
+--
+-- 这类节点会被写成客户端加载不了的配置，而 mihomo / sing-box / Xray 都是
+-- 「一个坏节点废掉整份文件」——用户看到的是整个订阅不可用，而不是少一个节点。
+-- URI 路径一直在各解析器内部做这个校验（valid_hostport），Clash YAML /
+-- sing-box JSON / Surge 路径漏了：一份 `port: 1e999` 的 YAML 能产出 port=inf
+-- 的节点，落盘读回来又是 nil。各解析器只管把字段填对，校验统一放在这里。
+local function finish(nodes, format)
+	local out = {}
+	for _, n in ipairs(nodes or {}) do
+		if type(n) == "table" and valid_hostport(n.server, n.port) then
+			out[#out + 1] = n
+		end
+	end
+	return { nodes = out, format = format }
+end
+
 function M.parse(content)
 	if not content or content == "" then return { nodes = {}, format = "empty" } end
 	local format = M.detect(content)
@@ -1332,7 +1349,7 @@ function M.parse(content)
 		-- 不是格式不认识。与空串保持同一返回形态（0 节点、格式 empty）。
 		return { nodes = {}, format = "empty" }
 	elseif format == "uri" then
-		return { nodes = parse_lines(split_lines(content)), format = "uri" }
+		return finish(parse_lines(split_lines(content)), "uri")
 	elseif format == "base64" then
 		-- 兼容标准 base64 与 base64url（- _ 无 padding）：base64_url_decode 两者皆可
 		local decoded = util.base64_url_decode(content)
@@ -1348,21 +1365,21 @@ function M.parse(content)
 			if res then res.format = "base64" end
 			return res, err
 		end
-		return { nodes = parse_lines(split_lines(decoded)), format = "base64" }
+		return finish(parse_lines(split_lines(decoded)), "base64")
 	elseif format == "json" then
 		local nodes, err = parse_json_content(content)
 		if not nodes then return nil, err end
-		return { nodes = nodes, format = "json" }
+		return finish(nodes, "json")
 	elseif format == "yaml" then
 		local nodes = M.parse_yaml(content)
-		return { nodes = nodes, format = "yaml" }
+		return finish(nodes, "yaml")
 	elseif format == "surge" then
 		local nodes = parser_surge.parse(content)
-		return { nodes = nodes, format = "surge" }
+		return finish(nodes, "surge")
 	elseif format == "wireguard-conf" then
 		local nodes, err = parse_wireguard_conf(content)
 		if not nodes then return nil, err end
-		return { nodes = nodes, format = "wireguard-conf" }
+		return finish(nodes, "wireguard-conf")
 	end
 	return nil, "无法识别的订阅格式"
 end

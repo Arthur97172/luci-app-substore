@@ -10,6 +10,7 @@
 | P0 | 14 项高危（输出整份不可用 / 数据永久丢失 / 安全） | ✅ 已完成（4 次推送，见 CHANGELOG `[2.6.0-r2]`～`[2.6.0-r5]`） |
 | P1 | 13 项中危 + 审计中实测确认的 4 项新缺陷 | ✅ 已完成（`[2.6.1-r1]`） |
 | P2 | 其余 M / L 项 | 🔄 进行中（批次一 `[2.6.3-r1]`、批次二 `[2.6.4-r1]`、批次三 `[2.6.5-r1]`、批次四 `[2.6.6-r1]`、批次五 `[2.6.7-r1]`、批次六 `[2.6.8-r1]`、批次七 `[2.6.9-r1]`） |
+| P3 | 输出层代码级复审（10 项）+ shadowsocks SIP003 插件全链路（1 项） | ✅ 已完成（`[2.6.10-r1]`，见下文「四」） |
 
 **编写纪律**：只记录经**代码级审计或实测探针**确认的结论，不含推测。原始 70 项
 审计表（高危 14 / 中危 30 / 低危 26）未落盘，本文件自本次起作为「未修复项」的
@@ -96,7 +97,26 @@ JSON 侧**不读**（`fp=nil`）。
 **候选方案**：在 `parse_singbox_json` 中补 `transport.type` → `net`、
 `transport.path` → `path`、`transport.headers.Host` → `host`、
 `tls.utls.fingerprint` → `fp`；并让简易 YAML 侧同样处理 `transport`。
-**需先核实 sing-box 各 transport 的权威字段名（ws / grpc / http），不凭记忆。**
+
+**权威字段名已核实（`[2.6.10-r1]`，取自上游
+`sing-box.sagernet.org/configuration/shared/v2ray-transport/`，可直接照此实现，
+无需再猜）**：
+
+| `transport.type` | 本项目的 `net` | 字段映射 |
+|---|---|---|
+| `ws` | `ws` | `path` → `path`；`headers.Host` → `host` |
+| `grpc` | `grpc` | `service_name` → `path` |
+| `http` | `http` | `path` → `path`；`host` 是**数组**，取首个 → `host` |
+| `httpupgrade` | `http` | `path` → `path`；`host` 是**单个字符串** → `host` |
+| `quic` | 无对应 | 本项目模型没有 quic，按未知传输处理（回落 tcp 或丢弃） |
+
+另：`tls.utls.fingerprint` → `fp`（YAML 侧已读，JSON 侧未读，需对齐）；
+`tls.enabled` 为 `false` 时不得置 `security`。
+
+**修复建议：本轮修复**（`[2.6.10-r1]` 未实施，留待下一轮）。它与 F5 / F6 / F11
+同属「静默丢传输层 → 节点连不上且不报错」，而 ws / grpc 节点在机场的 sing-box
+配置里占比很高，影响面比 F5/F6 更大。实施时两侧（JSON 与简易 YAML）必须一起改，
+否则同一条订阅走两条导入路径会得到不同的节点。
 
 ## 1.4 `converter.lua` / `node_converter.lua` 为死代码，README 声明与实现不符
 
@@ -140,6 +160,11 @@ trojan=1.2.3.4:443, password=p, over-tls=true, tag=A,B
 `[server_local]` 行内是逗号分隔的 `key=value` 字段序列，名字里的逗号落在
 `tag=` 的值里，按该语法会被读成字段分隔符。
 
+**补充（`[2.6.10-r1]`）**：同一条行语法在**参数值**上的同类问题已修复 —— `to_qx`
+现在先把具名字段攒成列表、逐字段判定值里是否含逗号，含逗号的整条丢弃（连同
+`[policy]` 成员），不再出现 `password=pa,ss` 被静默截断成 `password=pa`。
+本条讨论的 `tag=` **名字**部分仍维持现状，理由见下面的推荐方案。
+
 **未验证的部分（不猜）**：QX 对这种「最后一个字段值里多出逗号」的行究竟是
 报错、忽略多余片段，还是原样接受，**本机没有 Quantumult X 可供实测**。
 因此本条按「待核实」记录，未作修改。
@@ -156,6 +181,18 @@ trojan=1.2.3.4:443, password=p, over-tls=true, tag=A,B
 
 **注**：Surge 家族的 `[Proxy]` 定义行是 `NAME = type, host, port, …`，
 名字在 `=` **左侧**，逗号大概率不影响解析（未实测），故本条**只针对 QX**。
+
+**推荐方案：B（丢弃）**。理由：
+
+- A（改名）会引入新的重名风险，而「重名代理」在 Surge / QX 上的行为同样未核实 ——
+  等于用一个未核实的问题换掉另一个，不划算。
+- C（维持现状）会让用户拿到一份静默损坏的配置，与本项目「宁可丢节点也不输出
+  损坏行」的既有约定（Surge 家族丢 wireguard / ssr、Clash 原版丢不支持的协议）相悖。
+- B 与 F7 已落地的处置完全一致，实现上只是把 `names_of` 的排除条件也用到定义行上，
+  改动小、行为可预期。
+
+实施前仍建议先核实 QX 对多余逗号片段是报错还是忽略 —— 若确认是「忽略多余片段、
+`tag` 取第一段」，则 C 也可接受，届时再定。
 
 ---
 
@@ -224,8 +261,12 @@ tuic / hysteria / wireguard / socks），确实不含 `http`。它可由 Clash Y
 
 **影响**：同一节点经 `.conf` 导入与经 JSON 导入，得到的字段集**不一致**。
 
-**候选方案**：A. 核实 AmneziaWG 上游对这 9 个键的权威语义后补入白名单（不猜语义）；
-B. 保持白名单策略，在文档说明差异。
+**状态：已修复（`[2.6.10-r1]` 复核）**。`parser.lua` 的 `.conf` 键映射表已收录全部
+9 个 v3.0 / 3.1 键（`headerprotectionkey` → `header-protection-key` …
+`disablecookies` → `disable-cookies`），并补入了 v1.5 的 `s3/s4/i1..i5/j1..j3/itime`。
+其中 `random-trailers` / `disable-cookies` 是布尔字段，按 amneziawg-tools 的
+`parse_bool`（只认 `on`/`off` 或十进制数）解析，非法值丢弃而不是原样透传 ——
+留着会让 mihomo 解析该字段时报错。**本条无需再决策。**
 
 ---
 
@@ -267,8 +308,10 @@ end
 
 即无 `nixio` 时任意主机名放行。另存在解析与下载之间的 TOCTOU 窗口。
 
-**候选方案**：A. 改为 fail-closed（可能误伤无 DNS 环境）；B. 维持现状并文档说明；
-C. 引入 `nixio` 作为必需依赖（与 1.1 的锁方案可一并考虑）。
+**状态：已修复（`[2.6.8-r1]`）**。`http.lua` 现在解析不到主机名时返回
+`false, "无法解析目标主机名"`（fail-closed），并额外拦截 `@`、空白、`%` 等
+非法字符与 IPv6 字面量形式的私网地址。TOCTOU 窗口仍在（解析与下载之间），
+但已不再是「任意主机名放行」。**本条无需再决策。**
 
 ## 3.5 wget 路径的重定向校验是**事后**的
 
@@ -276,6 +319,68 @@ C. 引入 `nixio` 作为必需依赖（与 1.1 的锁方案可一并考虑）。
 限制下载体积。
 
 **候选方案**：与 3.2 一并处理（改用 curl 或自实现 HTTP 客户端）。
+
+---
+
+# 四、P3：输出层代码级复审（`[2.6.10-r1]` 已修复）
+
+对 8 个输出模块与 `output.lua` 做了逐行复审，按「生成的配置能否被目标客户端加载」
+这一条标准筛出 11 项缺陷。**全部已修复、已补回归测试、并已对 `HEAD` 反向验证**
+（`tests/output_layer_fixes_test.lua` 30 条断言、`tests/ss_plugin_test.lua` 25 条
+断言在修复前失败，修复后全绿）。逐项记录如下。
+
+| 编号 | 位置 | 缺陷 | 后果 |
+|---|---|---|---|
+| F1 | `output_clash_meta` | `ws-opts:` 写在 `if node.path` 内，只有 host 的 ws 节点输出悬空的 `headers:` | YAML 非法 / Host 被忽略，ws 握手被拒 |
+| F2 | `output_v2ray` | 空传输层编码成 `[]` 而非 `{}` | Xray `UnmarshalTypeError`，拒绝启动 |
+| F3 | `output_clash_meta` | 节点名与其它节点 / 策略组名 / 保留名冲突时不消解 | mihomo `proxies` 重名，拒绝加载整份配置 |
+| F4 | `output_clash_meta` | `esc_yaml` 未引用以 `%` `!` `-` 开头的标量 | 非法 YAML，mihomo 解析失败 |
+| F5 | `output_formats` | QX 的 vless 分支不输出 obfs / tls 参数 | 客户端按明文 tcp 连 ws 端口，必然失败且不报错 |
+| F6 | `output_formats` | Surge 家族的 vless 分支不输出 ws 传输层 | 同上 |
+| F7 | `output_formats` | 参数值里的逗号把凭据静默截断（`password=pa,ss` → `password=pa`） | 静默发错凭据 |
+| F8 | `output_uri` | IPv6 字面量地址未加方括号 | authority 无法解析 |
+| F9 | `output_clash_meta` | `amnezia-wg-option` 子键未转义 | 键名里的 `:` / 引号写坏 YAML 映射 |
+| F10 | `output.lua` | `content_type_for` / `extension_for` 对空 target 落空（`""` 在 Lua 里是真值） | 正文与响应头 / 文件名后缀不一致 |
+| F11 | 全链路 | shadowsocks 的 SIP003 `plugin` 被三个输出模块静默丢弃；表单保存时被清空 | 带 obfs / v2ray-plugin 的节点导出后连不上；界面上编辑一次即永久丢失插件配置 |
+
+**F11 的处置依据**（均核对上游源码 / 文档，非推测）：
+
+- **SIP002**：`SS-URI = "ss://" userinfo "@" host ":" port [ "/" ] [ "?" plugin ] [ "#" tag ]`，
+  插件参数整体做百分号编码。
+- **sing-box**：`shadowsocks` 出站只有 `plugin`（字符串，官方文档明确
+  *"Only two are supported: obfs-local and v2ray-plugin"*）与 `plugin_opts`
+  （SIP003 原始参数串，原样透传）。其余插件名会被拒绝，故按白名单过滤。
+- **mihomo**：`plugin-opts` 是**映射**而非字符串，且名称与参数名都要翻译
+  （`obfs-local`/`simple-obfs` → `obfs`，参数 `obfs` → `mode`、`obfs-host` → `host`）。
+  `adapter/outbound/shadowsocks.go` 对这两类插件是**强校验**的：obfs 的 mode 不在
+  `{tls,http}` 里报 `"ss %s obfs mode error"`，v2ray-plugin 的 mode 不是 `websocket`
+  同样报错 —— 都会让整个 outbound 构造失败，进而**拒绝加载整份配置**。因此参数
+  不全时宁可整个不输出插件，也不能输出一个必然被拒绝的组合。
+
+**顺带修正的既有测试**：`tests/output_formats_test.lua` 原断言
+`tuic alpn array joined` 期望 `alpn=h3,h2`。多值 alpn 在 Surge 家族的行语法里
+表达不了（逗号分隔的 `key=value`，无转义），F7 的通用逗号检查会因此丢掉整个节点。
+处置：alpn 是**协商提示**而非凭据，缺省时客户端用服务端给出的列表 —— 所以只省略
+该参数、保留节点。断言已按此契约更新。
+
+---
+
+# 五、其余遗留项的修复建议（按推荐优先级排序）
+
+| 项 | 推荐方案 | 理由 | 前置条件 |
+|---|---|---|---|
+| 1.1 H10 无锁 | **C**：`mkdir` 原子锁 + 陈旧锁回收 | 纯 Lua、无新依赖，本机**可测**（桩掉 `os.execute` / `os.time`）；崩溃残留锁由「锁目录内写持有者 PID + 时间戳」自愈 | 需定义锁超时阈值 |
+| 1.3 sing-box 读取侧 transport 丢失 | **修复**（补 `transport` 解析） | 与 F5/F6/F11 同类：静默丢传输层 → 节点连不上；影响面更大 | 字段映射**已核实**（见 1.3 正文），可直接实施 |
+| 1.4 死代码 + README 声明不符 | **已随本轮 README 精简处理** | 删去了「协议转换：任意协议 → 任意协议」的过度声明 | 无 |
+| 1.5 QX `tag=` 逗号 | **B**：整体丢弃 | 见上文 | 建议先核实 QX 实际行为 |
+| 2.1 混合格式文本导入 | **暂缓** | 需要「按行嗅探格式」的启发式，误判代价高于收益 | 无 |
+| 2.2 hysteria v1 `up`/`down` | **暂缓** | 节点模型里没有带宽字段，补它属于新功能（应进 minor 版本） | 需先定字段名与单位 |
+| 2.3 hysteria v1 URI 规范 | **维持现状** | 上游规范无法核实，按「不猜」原则不动 | 找到权威规范后再定 |
+| 2.4 `http` 不进 UI | **暂缓** | 后端已完整支持，只是 UI 不暴露；补它属于新功能 | 无 |
+| 2.5 `parser_yaml.lua` 死代码 | **删除**（或标注） | 死代码会被后续审计反复重新评估，成本高于收益 | 先确认无任何 `require` |
+| 3.1 AWG 逐字段化 UI | **暂缓**（新功能，进 minor） | 数据往返已正确，仅录入体验 | 无 |
+| 3.2 / 3.5 wget 体积与重定向 | **暂缓** | busybox wget 无对应选项；改 curl 或自实现 HTTP 客户端是大改动 | 无 |
+| 3.3 改名规则 `(a\|b)` | **A**：维持现状 + 文档说明 | Lua 模式无 alternation；自实现展开要处理嵌套与字符类，收益低 | 无 |
 
 ---
 

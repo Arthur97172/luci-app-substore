@@ -7,7 +7,7 @@ local parser = require("substore.parser")
 
 local M = {}
 
-M.version = "2.6.9"
+M.version = "2.6.10"
 M.DATA_DIR = "/etc/substore"
 M.LIST_FILE = M.DATA_DIR .. "/subscriptions.json"
 M.NODES_DIR = M.DATA_DIR .. "/nodes"
@@ -415,6 +415,9 @@ local FORM_KEYS = {
 	headerType = true, path = true, host = true, sni = true, tls = true,
 	["skip-cert-verify"] = true, skip_cert_verify = true, security = true, flow = true,
 	["obfs-password"] = true, obfs_password = true,
+	-- SIP003 插件串（shadowsocks）。必须在表里：merge_form_node 只清 FORM_KEYS 里
+	-- 的键，缺了这一项，用户在表单里清空插件输入框也删不掉旧值。
+	plugin = true,
 	["private-key"] = true, private_key = true, ["peer-public-key"] = true, peer_public_key = true,
 	["public-key"] = true, public_key = true, ["pre-shared-key"] = true, preshared_key = true, 
 	ip = true, ipv6 = true, ["allowed-ips"] = true, allowed_ips = true,
@@ -638,9 +641,16 @@ end
 -- 校验 cron 表达式：5 个字段，每个为数字或 *，防 cron 文件命令注入
 function M.cron_time_valid(ct)
 	if type(ct) ~= "string" then return false end
+	-- 控制字符一律拒绝。原先用 `%S+` 取词，它把换行也当分隔符：`"1\n 3 * * *"`
+	-- 同样切成 5 个合法词元并通过校验，然后被 write_cron 原样写进
+	-- /etc/cron.d/substore —— 那一行会断成两行，前一行 `1` 不是合法的
+	-- crontab 条目，cron 每次 reload 都报语法错。分隔符必须是单个空格：
+	-- 下面改用整串匹配，制表符 / 多空格 / 换行都落不进来。
+	if ct:find("%c") then return false end
 	local fields = {}
 	for f in ct:gmatch("%S+") do fields[#fields + 1] = f end
 	if #fields ~= 5 then return false end
+	if not ct:match("^%S+ %S+ %S+ %S+ %S+$") then return false end
 	for _, f in ipairs(fields) do
 		if f ~= "*" and not f:match("^%d+$") then return false end
 	end

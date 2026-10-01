@@ -194,6 +194,64 @@ function M.split_hostport(s)
 	end
 end
 
+-- 解析 SIP003 插件串（shadowsocks 的 `plugin` 字段）。
+--
+-- 格式出自 SIP002 §"For plugin argument"，与 SIP003 的 SS_PLUGIN_OPTIONS 同构：
+--     <name>[;<key>=<value>]...        例：obfs-local;obfs=http;obfs-host=www.baidu.com
+-- 值里的 `;`、`=`、`\` 按规范用反斜杠转义，因此切分必须跳过转义序列 ——
+-- 否则 `path=/a\;b` 会被切成两段，得到一个并不存在的选项，而 `\;` 是 v2ray-plugin
+-- 的 path 里完全可能出现的写法。
+--
+-- 返回 name, opts_string, opts_map：
+--   * opts_string 是 `;` 之后的原样串（含转义），用于 sing-box 的 plugin_opts ——
+--     该字段就是交给插件进程的 SS_PLUGIN_OPTIONS，原样透传才不失真；
+--   * opts_map 是拆好的键值对，用于需要逐键映射的目标（mihomo 的 plugin-opts）。
+--     不带 `=` 的裸标志（v2ray-plugin 的 `tls`）取值为 true。
+-- 空串或没有插件名时返回 nil。
+function M.parse_sip003_plugin(raw)
+	if type(raw) ~= "string" or raw == "" then return nil end
+	local fields, buf = {}, {}
+	local i, n = 1, #raw
+	-- 必须是 while：下面遇到转义序列要一次吃掉两个字符，Lua 的数值 for 会在每轮
+	-- 重新赋值控制变量，循环体内改 i 不生效。
+	while i <= n do
+		local c = raw:sub(i, i)
+		if c == "\\" and i < n then
+			buf[#buf + 1] = c .. raw:sub(i + 1, i + 1)
+			i = i + 2
+		elseif c == ";" then
+			fields[#fields + 1] = table.concat(buf)
+			buf = {}
+			i = i + 1
+		else
+			buf[#buf + 1] = c
+			i = i + 1
+		end
+	end
+	fields[#fields + 1] = table.concat(buf)
+
+	local name = M.trim(fields[1] or "")
+	if name == "" then return nil end
+
+	local opts_list = {}
+	for idx = 2, #fields do
+		local f = M.trim(fields[idx])
+		if f ~= "" then opts_list[#opts_list + 1] = f end
+	end
+
+	local map = {}
+	for _, f in ipairs(opts_list) do
+		local k, v = f:match("^([^=]+)=(.*)$")
+		if k then
+			map[M.trim(k)] = v
+		else
+			map[f] = true
+		end
+	end
+
+	return name, table.concat(opts_list, ";"), map
+end
+
 -- ---------- JSON ----------
 local function utf8_char(cp)
 	if cp < 0x80 then
@@ -225,7 +283,14 @@ local JSON_NULL = {}
 -- JSON 空对象占位符。Lua 的空表无法区分 {} 与 []（is_array 判定空表为数组），
 -- 而 sing-box / Xray 的部分字段必须是对象（"tls": {}、"settings": {}），
 -- 编码成 [] 会被客户端拒绝。需要空对象时显式使用本常量。
-M.JSON_EMPTY_OBJECT = setmetatable({}, { __tostring = function() return "{}" end })
+--
+-- 标记用的是**元表**而不是表本身的同一性：解码器每遇到一个 `{}` 必须返回一张
+-- 新表，不能返回这张共享的常量表。core.load 拿到 items 后会直接往里塞订阅
+-- （`items[id] = {...}`），共享表会让这次写入落到全局哨兵上，随后 json_encode
+-- 又把哨兵短路成 `{}` —— 结果是「接口返回新增成功、进程内 list 也看得到，
+-- 但文件里什么都没写，重启即消失」。
+local JSON_OBJ_MT = { __tostring = function() return "{}" end }
+M.JSON_EMPTY_OBJECT = setmetatable({}, JSON_OBJ_MT)
 
 function M.json_encode(v)
 	local function enc(v)
@@ -244,12 +309,22 @@ function M.json_encode(v)
 				else return string.format("\\u%04x", c:byte()) end
 			end) .. '"'
 		elseif t == "number" then
-			if v ~= v then return "null" end
+			-- 非有限数必须编成 null：`%.14g` 对 inf / -inf 产出的是字面量
+			-- `inf` / `-inf`，那不是合法 JSON —— 整份文件会因此解析不了。
+			-- 触发路径是真实存在的：订阅响应头 `subscription-userinfo` 里的
+			-- `total=1e999` 经 tonumber 就是 inf，写进 subscriptions.json 后
+			-- 下一次 load() 直接判「列表文件已损坏」，全部订阅从界面上消失；
+			-- 节点侧的 port 同理，一个 inf 会毁掉该订阅的整个节点文件。
+			if v ~= v or v == math.huge or v == -math.huge then return "null" end
 			return string.format("%.14g", v)
 		elseif t == "boolean" then
 			return v and "true" or "false"
 		elseif t == "table" then
-			if v == M.JSON_EMPTY_OBJECT then
+			-- 带空对象标记、且**确实还是空的**才编成 {}：标记只是「这里曾经是
+			-- 空对象」的线索，调用方完全可能拿到解码结果后往里加键
+			-- （core.load 就是这么用 items 的）。少了 next(v) == nil 这一半，
+			-- 加过键的表会被编回 {}，内容静默丢失。
+			if getmetatable(v) == JSON_OBJ_MT and next(v) == nil then
 				return "{}"
 			elseif v == JSON_NULL then
 				-- 数组里的 null 解码时被换成 JSON_NULL 占位（见 json_decode），
@@ -286,10 +361,23 @@ function M.json_decode(s)
 		end
 	end
 
-	local function parse()
+	-- 嵌套深度上限。parse 是递归下降，每进一层容器就多一层 Lua 调用栈；
+	-- 几千层时 Lua 5.1 会**抛出** "stack overflow" 而不是返回错误，而本函数的
+	-- 契约是 `nil, err`。抛出的异常会一路冒到调用方：core.add_local 里的
+	-- `M.sync(id)` 没有 pcall，控制器也没兜住，于是本地订阅导入在订阅行已经
+	-- 写盘之后变成 HTTP 500，且 sync 内的 save_meta(error=...) 全被跳过，
+	-- 留下一条「看起来还在更新中」的空记录。
+	-- 64 层远超任何真实配置（订阅节点是扁平的，sing-box 配置最深也不过十几层）。
+	local MAX_DEPTH = 64
+
+	local function parse(depth)
 		skip_ws()
 		if i > len then return nil, "unexpected end" end
 		local c = s:sub(i, i)
+
+		if (c == "{" or c == "[") and depth >= MAX_DEPTH then
+			return nil, "nesting too deep"
+		end
 
 		if c == "{" then
 			i = i + 1
@@ -299,16 +387,18 @@ function M.json_decode(s)
 			-- {} 与 []，裸 {} 会被 is_array 判成数组、编码回 []，于是
 			-- `{"tls":{}}` 往返变成 `{"tls":[]}` —— sing-box / Xray 里
 			-- 要求是对象的字段（tls / settings）会因此被客户端拒绝。
-			if s:sub(i, i) == "}" then i = i + 1 return M.JSON_EMPTY_OBJECT end
+			-- 每次返回**新表**（带同一标记元表），不能返回共享常量：
+			-- 见 JSON_OBJ_MT 处的说明。
+			if s:sub(i, i) == "}" then i = i + 1 return setmetatable({}, JSON_OBJ_MT) end
 			while true do
 				skip_ws()
-				local k, ke = parse()
+				local k, ke = parse(depth + 1)
 				if ke then return nil, ke end
 				if not k or type(k) ~= "string" then return nil, "expected string key" end
 				skip_ws()
 				if s:sub(i, i) ~= ":" then return nil, "expected ':'" end
 				i = i + 1
-				local val, verr = parse()
+				local val, verr = parse(depth + 1)
 				if verr then return nil, verr end
 				obj[k] = val
 				skip_ws()
@@ -329,7 +419,7 @@ function M.json_decode(s)
 			skip_ws()
 			if s:sub(i, i) == "]" then i = i + 1 return arr end
 			while true do
-				local val, verr = parse()
+				local val, verr = parse(depth + 1)
 				-- 必须把内层错误透出去：此前无条件把 nil 当成 null 占位，
 				-- 于是 `[1,]` 这种畸形输入被静默接受（parse 报错后 i 未前进，
 				-- 下一轮读到 `]` 就当成数组结束），解出 `{1, JSON_NULL}`。
@@ -407,7 +497,7 @@ function M.json_decode(s)
 		end
 	end
 
-	local v, perr = parse()
+	local v, perr = parse(0)
 	-- 此前写成 `local v = parse(); return v` —— parse 的第二返回值（错误串）
 	-- 被直接丢弃，于是 json_decode **永远不返回错误**：所有调用方的
 	-- `local data, err = util.json_decode(...)` 里 err 判断都是死代码，
