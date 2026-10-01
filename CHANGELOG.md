@@ -2,6 +2,67 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.7-r1] - P2 批次五：控制器健壮性（L3 / L4）
+
+P2 批次五，修控制器的两项缺陷：一类是**未登录可达的 500**，一类是
+**点了按钮却什么都没发生**。两者都属于「静默」——不报错、看起来正常。
+
+### L3 重复表单字段让 `formvalue` 返回 table，直接崩在 `:gsub` 上
+
+- LuCI 的 `formvalue` **不保证返回字符串**。依据上游 `luci/http.lua` 的
+  `urldecode_message_body`：
+
+  ```lua
+  elseif what == parser.VALUE and name then
+      local val = msg.params[name]
+      if type(val) == "table" then val[#val+1] = ...
+      elseif val ~= nil then msg.params[name] = { val, ... }   -- ← 第二次出现变成 table
+  ```
+
+  而 `formvalue` 原样返回 `msg.params[name]`；上游 luadoc 也写着
+  `@return HTTP input value or table of all input value`。
+- 控制器有 ~30 处直接对返回值做 `:gsub` / `util.trim` / `urlencode`，
+  遇到 table 会抛 `attempt to call method 'gsub'` → **HTTP 500**。
+  实测复现：`action_create` / `action_save` / `action_local_create` /
+  `action_local_save` / `action_combo_save` / `action_node_set_group` /
+  `action_probe` / `action_download` 共 8 个 action 崩溃。
+- **攻击面不限于已登录用户**：`/substore/download` 是无需登录的入口
+  （供 Passwall / OpenClash 拉取），对它 POST 一个重复的 `token` 字段即可触发。
+- 现新增 `fv(http, key)` 统一取值：table 取最后一个（与「同名参数后者覆盖
+  前者」一致），`nil` 保持 `nil`（`post_ok` 依赖它区分「无 token」与
+  「空 token」）。全部调用点收敛到这一处。
+- **更正审计表的表述**：触发条件是 **POST 重复字段**，不是 GET。GET 查询串
+  走的是 `urldecode_params`，它只做 `params[name] = ...` 覆盖、**不建表**。
+- 顺带清理：`action_node_delete` 里 `if type(idx_param) == "table"` 的兜底
+  在 `fv` 之后已成为死代码，移除。
+
+### L4 `combo_save` / `delete` / `update` / `node_delete` 静默失败
+
+违反项目 §18（失败必须让用户看见，不能「失败了却看起来像成功」）：
+
+- `action_delete`：`core.remove` 的返回值被整个丢弃。非法 ID / 订阅不存在时
+  返回 `false`，页面照常跳回列表 —— 用户点了删除，订阅还在。
+- `action_combo_save`：名称留空、或一个来源都没勾选时整段跳过直接跳回列表；
+  `add_combo` / `save_combo` 的返回值同样被丢弃（非法 ID、未选来源、写入失败
+  一律静默）。
+- `action_update`：订阅不存在（ID 拼错 / 已被删除）时静默跳回列表。
+- `action_node_delete`：下标解析不出数字、或下标全部越界时静默跳回列表；
+  `write_nodes` 失败也不提示。
+- 现四处全部补上原因回显。
+
+### 测试
+
+- 新增 `tests/controller_robustness_test.lua`，27 项断言：
+  - 12 个 action 逐个在「所有字段都重复提交」下调用，断言**不抛错**；
+  - 重复字段取值语义（取最后一个）；
+  - L4 四处的失败回显 + 成功路径不带 `err` 的守卫。
+- **反向验证**：指向 `HEAD` 版控制器重跑，**27 项中 18 项失败**，
+  崩溃点正是审计表标注的行（`substore.lua:90/118/146/170/321` 与
+  `util.lua:9`），确认测试覆盖的是真实缺陷而非恒真。
+- 全量回归：41 个 Lua 测试文件（1809 项断言）+ `cron_result_test.sh`(14)
+  全部通过。
+- 版本号 2.6.6-r1 → 2.6.7-r1。
+
 ## [2.6.6-r1] - P2 批次四：核心数据层（代理解析 / 去重 / cron 退出码 / 规则字段）
 
 P2 批次四，修四项缺陷（审计表 M16 / M17 / M18 / M30）。前三项在数据通路上，
