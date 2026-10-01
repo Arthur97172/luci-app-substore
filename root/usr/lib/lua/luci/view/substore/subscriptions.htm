@@ -60,6 +60,10 @@
 		end
 		local sub_token = core.ensure_token(it.id)
 		local sub_link_base = prefix .. "?token=" .. sub_token .. "&target="
+		-- 还没解析出节点时禁用格式下拉：刚添加还没点「更新」、更新失败、
+		-- 或解析结果为空的订阅，转出来的内容必然是空的。让用户能选，
+		-- 等于引导他生成一个无效的订阅链接（选了也只是得到一个空结果）。
+		local fmt_disabled = (tonumber(it.node_count) or 0) <= 0
 %>
 	<tr class="cbi-section-table-row">
 		<td>
@@ -91,7 +95,9 @@
 		<td>
 			<div style="display:flex;gap:0.25em;align-items:center">
 				<select id="fmt_<%=it.id%>" data-base="<%=luci.util.pcdata(sub_link_base)%>"
-					onchange="substore_setlink(this, '<%=it.id%>')">
+					onchange="substore_setlink(this, '<%=it.id%>')"<%
+					if fmt_disabled then %> disabled="disabled" title="<%:Update and parse nodes before choosing a format%>"
+					style="opacity:0.5;cursor:not-allowed"<% end %>>
 					<option value=""><%:Select format%></option>
 <% for _, fo in ipairs(output.FORMAT_OPTIONS) do %><option value="<%=fo[1]%>"><%=fo[2]%></option><% end %>
 				</select>
@@ -103,7 +109,13 @@
 						onclick="var e=document.getElementById('link_<%=it.id%>');e.select();document.execCommand('copy');"><%:Copy%></button>
 				</div>
 			</div>
-			<div class="cbi-value-description"><%:Pick a format to generate the subscription link; you can switch formats at any time%></div>
+			<div class="cbi-value-description"><%
+				if fmt_disabled then
+					%><%:Update and parse nodes before choosing a format%><%
+				else
+					%><%:Pick a format to generate the subscription link; you can switch formats at any time%><%
+				end
+			%></div>
 		</td>
 		<td>
 			<% if it["local"] then %>

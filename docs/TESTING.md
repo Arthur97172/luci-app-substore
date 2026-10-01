@@ -19,6 +19,8 @@
 | `singbox_transport_test.lua` | sing-box `transport` 对象（ws / grpc / http / httpupgrade）读取 |
 | `list_lock_test.lua` | 订阅列表 `mkdir` 互斥锁、陈旧锁回收、可重入 |
 | `qx_tag_comma_test.lua` | QX 节点名含逗号时的整条丢弃 |
+| `dns_fallback_test.lua` | DNS 解析回退（nixio → nslookup）与连接时对端地址校验 |
+| `subscriptions_format_gate_test.lua` | 订阅列表页格式下拉的启用条件（真实渲染模板后断言） |
 
 运行全部：`for f in tests/*.lua; do lua5.1 "$f" || exit 1; done`
 

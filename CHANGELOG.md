@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.12-r1] - 修复 [2.6.8-r1] 引入的「无法解析目标主机名」回归 + 格式下拉启用条件
+
+### 修复：所有域名订阅在缺少 luci-lib-nixio 的设备上报「无法解析目标主机名」
+
+**用户实测**：2.6.7-r1 能正常解析的订阅（`update.glados-config.com` 的 mihomo YAML、
+`s.feijiyunduijie999999.com` 的 quantumult / quantumultx / shadowrocket 三种格式），
+从 2.6.8-r1 起状态一律变成「无法解析目标主机名」。
+
+**根因**（`392c658`，2.6.8-r1）：`http.check_public` 里「解析不出 IP」被改成一律
+fail-closed 拒绝，理由是「本包依赖 luci-lua-runtime，后者硬依赖 luci-lib-nixio，
+所以解析失败只意味着真的解析不了，代价为零」。这个前提在用户设备上不成立：
+`resolve()` 只有 `nixio.getaddrinfo` 一条路，nixio 取不到时恒返回 `nil`，
+于是**每一个域名**都被判成「解析失败」——而 curl/wget 自带 libc 解析器，
+照样能把域名解析出来并下载。真正的错误是把「本机没有解析手段」与
+「这个域名解析不出来」合并成了同一个 `nil`。
+
+**修复**：
+- `resolve()` 改为多级回退：`nixio.getaddrinfo` → busybox `nslookup`（`io.popen`，
+  只取 `Name:` 段之后的 `Address:` 行，避免把 DNS 服务器自己的地址当解析结果）。
+- 返回值拆成 `ips, have_resolver`：有解析手段却解析不出来 → 仍 fail-closed
+  （`127.0.0.1.nip.io` 这类绕过口必须继续堵死）；完全没有解析手段 → 放行，
+  但返回第三个值 `unverified = true`。
+- 新增连接时对端校验 `verify_peer_ip`：`fetch_curl` 的 `-w` 同时取
+  `%{http_code}` 与 `%{remote_ip}`，用**真正建立连接的那个 IP** 复核。
+  这既补上了 `unverified` 放行路径的校验，也顺带免疫「预检时解析到公网、
+  连接时解析到内网」的 DNS rebinding。重定向的**第一跳**同样复核
+  （`Location` 检查只能拦第二跳）。走代理时跳过（`%{remote_ip}` 是代理地址）。
+- `unverified` 且拿不到对端 IP → 拒绝：「无法校验」不等于「放行」。
+
+**验证**：同一台机器上对上述真实主机名调用 `check_public`，
+`HEAD` 返回 `false / 无法解析目标主机名`，修复后返回 `ok = true`。
+新增 `tests/dns_fallback_test.lua`（36 断言，覆盖 nslookup 解析、Server 段误用、
+NXDOMAIN fail-closed、无解析手段放行、连接时对端校验、代理跳过），
+对 `HEAD` 反向验证 **14 条失败**，修复后全绿。
+
+### 优化：订阅列表「订阅链接转换」的格式下拉，未解析出节点时禁用
+
+刚添加还没点「更新」、更新失败、或解析结果为空的订阅，`node_count` 为 0，
+此时格式下拉置灰不可选（`disabled="disabled"` + `opacity:0.5` +
+`cursor:not-allowed` + `title` 提示），下方说明文案同步切换为
+「更新并解析出节点后才能选择格式」（新增 msgid，已补 `po/zh-cn/substore.po`）。
+避免用户选出一个必然为空的订阅链接。
+
+新增 `tests/subscriptions_format_gate_test.lua`（20 断言）：把模板按 LuCI 的方式
+重建成 Lua chunk 并用替身环境**真实渲染**，再对生成的 HTML 断言
+（含「同一行在 node_count 变大后必须立刻变为可选」的反面对照）。
+对 `HEAD` 反向验证 **8 条失败**。
+
 ## [2.6.11-r1] - P4：遗留项决策后实施（1.1 / 1.3 / 1.4 / 1.5 / 2.5，3.3 补文档）
 
 `docs/LEGACY_ISSUES.md`「五」的推荐方案中，除标记为**暂缓**的（2.1 / 2.2 / 2.4 /

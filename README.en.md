@@ -62,6 +62,9 @@ group them, then re-emit them in a format your client can consume.
 - A random per-subscription token backs the public download endpoint
   `/substore/download?token=<token>&target=<format>`, so Passwall / OpenClash can
   pull it directly
+- The format dropdown on the list page stays greyed out until the subscription has
+  actually parsed some nodes (just added, update failed, or node count 0), so you
+  cannot generate a subscription link that is bound to be empty
 
 **LuCI interface & i18n**
 - English by default, Simplified Chinese when the runtime language is `zh-cn`
@@ -69,18 +72,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.11-r1`).
+> [Makefile](Makefile) (currently `2.6.12-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.11-r1.ipk
+opkg install luci-app-substore-2.6.12-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.11-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.12-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.

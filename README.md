@@ -55,6 +55,8 @@
 **订阅链接**
 - 每个订阅独立随机 token → 公开下载端点
   `/substore/download?token=<token>&target=<format>`，Passwall / OpenClash 等可直接拉取
+- 列表页的格式下拉在订阅**解析出节点之前**（刚添加、更新失败、节点数为 0）
+  置灰不可选，避免生成必然为空的订阅链接
 
 **LuCI 界面与国际化**
 - 默认英文，运行时语言为 `zh-cn` 时自动显示简体中文
@@ -62,18 +64,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.11-r1`）。
+> （当前 `2.6.12-r1`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.11-r1.ipk
+opkg install luci-app-substore-2.6.12-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.11-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.12-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。

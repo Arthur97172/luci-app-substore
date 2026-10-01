@@ -297,6 +297,10 @@ msgstr "操作失败"
 msgid "Pick a format to generate the subscription link; you can switch formats at any time"
 msgstr "选择格式后生成订阅链接，格式可随时切换"
 
+# 订阅页：未解析出节点时格式下拉被禁用，说明原因
+msgid "Update and parse nodes before choosing a format"
+msgstr "更新并解析出节点后才能选择格式"
+
 # 节点表头 / 节点编辑表单里的字段标签
 msgid "Type"
 msgstr "类型"
