@@ -84,6 +84,16 @@
       请在你自己的配置里维护；把本输出合并进已有配置即可
     - ⚠️ 与 2.3.x 不兼容：2.3.x 输出的是仅含 `outbounds` 的片段，需要粘进已有配置使用；
       2.4.0 起是完整配置，可直接作为单文件配置启动
+- **输出合法性**：只输出目标客户端真正能加载的内容，而不是「看起来像那么回事」
+  - WireGuard 的 `allowed-ips` / `reserved` / `dns` 无论来源是 YAML 列表还是逗号分隔
+    字符串，一律输出为目标客户端要求的数组（mihomo 是 `[]string` / `[]uint8`，
+    sing-box 是 `[]string` / `[]uint8`）；写成标量会让客户端**拒绝加载整份配置**
+  - Surge 家族 / Quantumult X 的策略组成员列表会剔除**含逗号**的节点名：这些格式的
+    成员列表没有引号或转义机制，名字里的逗号会被当成成员分隔符，产出两个都不存在的
+    成员，客户端因「引用不存在的代理」拒绝加载整份配置；Quantumult X 的 `[policy]`
+    同时只收录真正写出了 `[server_local]` 行的节点，不再产生悬空引用
+  - hysteria / hysteria2 分享链接的 `insecure` 以权威字段 `skip-cert-verify` 为准，
+    Clash YAML / sing-box JSON / 表单导入的节点不再丢掉「跳过证书校验」
 
 **订阅链接**
 - 每个订阅独立随机 token → 公开下载端点
@@ -95,18 +105,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.4-r1`）。
+> （当前 `2.6.5-r1`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.4-r1.ipk
+opkg install luci-app-substore-2.6.5-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.4-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.5-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。

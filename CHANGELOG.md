@@ -2,6 +2,95 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.5-r1] - P2 批次三：输出层合法性（配置能否被目标客户端加载）
+
+P2 批次三，修输出层七项缺陷（审计表 M19 / M23 / M24 / M25 / M27 / L21 / L22）。
+共同判据只有一条：**生成的文件/链接必须能被目标客户端真正加载**，
+而不是「看起来像那么回事」。
+
+### M23 wireguard 数组字段以字符串形态原样透传
+
+- 节点模型里 `allowed-ips` / `reserved` / `dns` 的形态取决于来源：Clash YAML 的
+  嵌套列表解析后是 table，表单导入 / URI 导入 / `.conf` 导入后是
+  `"0.0.0.0/0, ::/0"` 这样的**字符串**。输出层此前不看类型直接透传，于是
+  sing-box 出 `"allowed_ips":"0.0.0.0/0"`、`"reserved":"1,2,3"`，
+  clash-meta 出 `allowed-ips: 0.0.0.0/0` 这个**标量**。
+- 而 mihomo 的 `allowed-ips` / `dns` 是 `[]string`、`reserved` 是 `[]uint8`，
+  sing-box 同名字段亦然 —— 标量反序列化失败，**整份配置拒绝加载**。
+- 现统一归一为列表：clash-meta 的 `yaml_value` 改为「数组或逗号分隔字符串 →
+  YAML 列表」；sing-box 的 `allowed_ips` / `dns` 走 `as_list`，
+  `reserved` 走 `as_num_list`（sing-box 要求 `[1,2,3]` 数字，字符串数组同样失败）。
+  空值不输出该键（`allowed-ips: []` 也是非法值）。
+
+### M27 未加引号的 YAML 标量里反斜杠被静默翻倍
+
+- `esc_yaml` 先无条件执行 `gsub("\\", "\\\\")` 再判断是否需要引号。而反斜杠
+  **不在** `need_quote` 的触发集里，所以 `pa\ss` 走的是「不加引号」这条路：
+  输出 `password: pa\ss` 的字面文本是 `pa\\ss`，YAML 按 plain scalar 回读
+  得到**两个反斜杠** —— 密码 / 路径直接错。
+- 现把转义链移进 `if need_quote` 分支：未加引号时反斜杠就是字面反斜杠，
+  加引号时才需要转义。`pa\ss` → `pa\ss`；`pa\ss: x`（含 `:`，需引号）
+  → `"pa\\ss: x"`。
+
+### M24 hysteria2/hysteria 分享链接丢掉「跳过证书校验」
+
+- 该分支只读 `n.insecure`。但按 `parser.lua` 自身的注释，模型里的**权威字段是
+  `skip-cert-verify`**（sing-box JSON 的 `tls.insecure` 也映射到它），
+  而 `insecure` 只是 URI 参数名、**只有 URI 解析器会写它**。
+- 于是 Clash YAML / sing-box JSON / 表单导入的节点在导出分享链接时，
+  「跳过证书校验」被整个丢掉，客户端按严格校验握手直接失败。
+- 现按 `skip-cert-verify` → `skip_cert_verify` → `insecure` 的优先级读取，
+  统一归一为 `insecure=1` / `insecure=0`（falsy 判定与 `output_singbox.lua`
+  的 `bool()` 一致：`false` / `"false"` / `0` / `"0"` 视为否）。
+
+### M25 trojan/tuic 分享链接的 alpn 数组未归一
+
+- 这两个分支把 `n.alpn` 直接交给 `url_encode`，而 `url_encode` 会
+  `tostring()` —— alpn 为 table 时（Clash YAML 的 alpn 列表、sing-box JSON 的
+  `tls.alpn` 导入后都是 table）链接里出现 `alpn=table%3A%200x...`，
+  客户端解析失败。vless 分支早已做了归一，这两处漏了。
+- 现抽出 `alpn_str()` 统一处理，三处共用。
+
+### L21 成员列表里含逗号的名字被当成两个成员
+
+- Surge 家族 `[Proxy Group]` 与 QX `[policy]` 的成员列表是
+  `NAME = select, X, Y, DIRECT`，语法里**没有引号 / 转义机制**。名字里的逗号
+  会被当成成员分隔符：`A,B` 被读成两个成员 `A` 与 `B`，两个都不存在 ——
+  Surge / QX 会因「引用不存在的代理」**拒绝加载整份配置**。
+- 现 `names_of()` 排除含逗号的名字（节点定义仍留在 `[Proxy]` / `[server_local]`
+  中，只是不进成员列表），并统一先过 `util.one_line()`：定义行本就经过
+  `one_line`（换行→空格），成员列表若用原始名就对不上定义行，同样是悬空引用。
+
+### M19 QX `[policy]` 引用未定义的服务器
+
+- QX 的 `[server_local]` 只输出 shadowsocks / vmess / vless / trojan 四类协议，
+  而 `[policy]` 用**未过滤**的 `names_of(nodes)` 收集全部节点名 ——
+  hysteria2 / tuic / socks / wireguard 等没有定义行，列进 `static=` 就是
+  **悬空引用**。
+- 现按「真正写出了 `[server_local]` 行的节点」收集成员。
+
+### L22 非数字 port 原样输出
+
+- `port: abc` / `port: 443/tcp` 这类非数字值会让 mihomo 拒绝加载整份配置。
+  sing-box / v2ray 输出一直用 `tonumber() or 0` 兜底，clash-meta 漏了。
+  现对齐。
+
+### 已核实无需修改
+
+- **M26**（hysteria/hysteria2/tuic 缺 `security` 时不输出 TLS）已在 P0 批次四
+  修复（`fb51e6e` 为三者补了 `node.normalize` 的 `security` 默认值），
+  经探针复核：raw 节点经 `normalize` 后 sing-box / clash 均正确输出 TLS。
+
+### 测试
+
+- 新增 `tests/output_legal_test.lua`，39 项断言，覆盖上述七项，
+  并对「本就正确的行为」加了守卫（数组形态不被破坏、字符串 alpn 不受影响、
+  数字端口不被改写、无 `insecure` 时不输出该参数）。
+- **反向验证**：把测试指向 `HEAD` 版输出模块重跑，39 项中 **28 项失败**，
+  确认它们覆盖了缺陷而非恒真；其余 11 项是行为守卫，本就应当通过。
+- 全量回归：41 个 Lua 测试文件（1786 项断言）+ `cron_result_test.sh`(11) 全部通过。
+- 版本号 2.6.4-r1 → 2.6.5-r1。
+
 ## [2.6.4-r1] - P2 批次二：wg-quick 导入健壮性与 IPv6 内网判定
 
 P2 批次二，修 `parser.lua` 的五项缺陷（审计表 M9 / L20 / L16 / L17 / L18）。

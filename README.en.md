@@ -100,6 +100,21 @@ group them, then re-emit them in a format your client can consume.
     - ⚠️ Not compatible with 2.3.x: 2.3.x emitted an `outbounds`-only fragment meant to be
       pasted into an existing config; from 2.4.0 it is a complete config you can start
       directly as a single file
+- **Output validity**: only what the target client can actually load is emitted — not
+  something that merely looks right
+  - WireGuard `allowed-ips` / `reserved` / `dns` are always emitted as the arrays the
+    target client requires (`[]string` / `[]uint8` for both mihomo and sing-box),
+    whether the source was a YAML list or a comma-separated string; a scalar makes the
+    client **refuse to load the whole config**
+  - Surge-family / Quantumult X proxy-group member lists drop node names containing a
+    **comma**: those formats have no quoting or escaping, so a comma in a name is read as
+    a member separator, yielding two members that do not exist and making the client
+    refuse the whole config for referencing unknown proxies; Quantumult X's `[policy]`
+    additionally lists only nodes that actually got a `[server_local]` line, so no
+    dangling references remain
+  - hysteria / hysteria2 share links take `insecure` from the authoritative
+    `skip-cert-verify` field, so nodes imported from Clash YAML / sing-box JSON / the
+    form no longer lose "skip certificate verification"
 
 **Subscription links**
 - Per-subscription random token → public download endpoint
@@ -112,18 +127,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.4-r1`).
+> [Makefile](Makefile) (currently `2.6.5-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.4-r1.ipk
+opkg install luci-app-substore-2.6.5-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.4-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.5-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.
