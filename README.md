@@ -62,18 +62,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.10-r1`）。
+> （当前 `2.6.11-r1`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.10-r1.ipk
+opkg install luci-app-substore-2.6.11-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.10-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.11-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。
@@ -86,6 +86,10 @@ apk add --allow-untrusted luci-app-substore-2.6.10-r1.apk
 3. **浏览节点** —— 筛选（分组 / 协议 / 关键词）、排序、探测延迟；勾选复选框后「删除」
    可批量删除，行内可编辑 / 删除 / 改分组，「刷新」重载列表。
 4. **导出** —— 任选 15 种格式之一，或复制订阅链接供下游客户端（Passwall / OpenClash / …）使用。
+
+> **重命名规则的匹配语法是 Lua 模式，不是 PCRE**。`|` 表示「或」，但只在**顶层**
+> 生效：写成 `(a|b)` 不会展开成「a 或 b」，而是按字面匹配（要求名字里真的出现
+> `a|b`）。多分支直接写 `a|b`，或拆成多条规则。字符类 `[...]` 内的 `|` 同样是字面。
 
 ## 目录结构
 

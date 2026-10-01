@@ -582,6 +582,62 @@ function M.ensure_dir(path, mode)
 	end
 end
 
+-- ---------- 互斥锁（mkdir 锁 + 陈旧锁回收） ----------
+--
+-- 用途：把「读整表 → 改 → 写整表」这段临界区串行化。LuCI 页面保存订阅、
+-- cron 定时更新、组合订阅自动重算三者可能同时发生，后写者整表覆盖先写者，
+-- 结果是订阅静默丢失。本机没有 nixio，用不了 flock；Lua 5.1 的 io.open 也没有
+-- O_EXCL —— 但 `mkdir` 本身是原子的，成功者只有一个，拿它当锁。
+--
+-- 崩溃残留：持有者被杀掉时目录会留在原地，后来者必须能回收，否则永久死锁
+-- （比丢数据更糟：整台设备的订阅从此无法再修改）。判据是**锁目录自身的
+-- mtime**，不是目录里的文件 —— mtime 由 mkdir 原子地设好，不存在「目录已建、
+-- 时间戳还没写」的窗口；写在目录里的持有者文件只作排障用，不参与判定。
+M.LOCK_STALE = 60 -- 秒。超过这个时长仍未释放即视为持有者已死。
+
+-- 锁目录是否已陈旧。用一条 shell 判断完成，不解析 stat 输出（少一处格式依赖）。
+-- stat 失败时回退成 0，于是「距今」必然大于阈值 —— 判定为陈旧，可以回收。
+-- 这是有意的失败方向：无法确认的锁宁可回收，也不要永久卡死。
+local function lock_is_stale(path, stale)
+	local cmd = string.format(
+		"[ $(( $(date +%%s) - $(stat -c %%Y %s 2>/dev/null || echo 0) )) -gt %d ]",
+		M.shq(path), stale)
+	return os.execute(cmd) == 0
+end
+
+-- 取锁。成功返回 true，调用方**必须**在临界区结束时调 lock_release。
+-- 失败返回 false（别人正持有，且未判定为陈旧）。
+-- opts.stale 覆盖超时阈值；opts.pid 写入持有者文件（默认 os.getpid 不可用，留 0）。
+function M.lock_acquire(path, opts)
+	opts = opts or {}
+	local stale = tonumber(opts.stale) or M.LOCK_STALE
+	-- 最多两轮：第一轮抢不到就查一次陈旧性，回收后第二轮重抢。
+	for _ = 1, 2 do
+		if os.execute("mkdir " .. M.shq(path) .. " >/dev/null 2>&1") == 0 then
+			-- 持有者信息纯属排障用（`cat` 一眼看出是谁、什么时候拿的）。
+			-- 写失败不影响正确性，因此不检查返回值。
+			local f = io.open(path .. "/owner", "wb")
+			if f then
+				f:write(string.format("%d %d\n", tonumber(opts.pid) or 0, os.time()))
+				f:close()
+			end
+			return true
+		end
+		if lock_is_stale(path, stale) then
+			os.execute("rm -rf " .. M.shq(path) .. " >/dev/null 2>&1")
+		else
+			return false
+		end
+	end
+	return false
+end
+
+-- 释放锁。持有者之外的人不应调用；这里不做持有者校验 —— 校验需要额外的
+-- 竞态窗口，而收益只是把「用错 API」变成一条错误信息。
+function M.lock_release(path)
+	os.execute("rm -rf " .. M.shq(path) .. " >/dev/null 2>&1")
+end
+
 -- ---------- 人性化格式 ----------
 -- 字节数 → 可读字符串（B/K/M/G/T），如 20G、512M
 function M.human_bytes(n)

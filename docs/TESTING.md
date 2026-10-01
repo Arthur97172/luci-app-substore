@@ -6,7 +6,6 @@
 | 测试文件 | 覆盖内容 |
 |---------|---------|
 | `run_tests.lua` | util(base64/json/url/hostport)、node、parser 基础 |
-| `converter_*_test.lua` | 协议转换、URL 模板渲染 |
 | `node_*_test.lua` | 节点模型扩展、分组、重命名 |
 | `output_clash_meta_test.lua` | Clash.Meta / Mihomo YAML 生成 |
 | `output_formats_test.lua` | 15 种目标格式统一分发 |
@@ -17,6 +16,9 @@
 | `parser_json_config_test.lua` | sing-box / V2Ray / Clash JSON 解析 |
 | `parser_input_test.lua` | 多客户端配置导入（sing-box/V2Ray/Surge/QX） |
 | `parser_local_link_test.lua` | 局域网订阅链接检测与解析 |
+| `singbox_transport_test.lua` | sing-box `transport` 对象（ws / grpc / http / httpupgrade）读取 |
+| `list_lock_test.lua` | 订阅列表 `mkdir` 互斥锁、陈旧锁回收、可重入 |
+| `qx_tag_comma_test.lua` | QX 节点名含逗号时的整条丢弃 |
 
 运行全部：`for f in tests/*.lua; do lua5.1 "$f" || exit 1; done`
 

@@ -234,6 +234,46 @@ local function qx_tls(n, f)
 	if n.security and n.security ~= "none" then f[#f + 1] = "tls-verification=true" end
 end
 
+-- 单条 [server_local] 定义行。返回 nil 表示该节点无法用 QX 的行语法表达，
+-- 由调用方整条剔除（定义行与 [policy] 成员一并去掉）。
+--
+-- 具名字段先攒成列表再拼接，而不是边拼字符串边追加：值里含逗号的条目在逗号
+-- 分隔语法里表达不了（`password=pa,ss` 会被读成 `password=pa` 加一个悬空字段，
+-- 凭据被静默截断），必须能逐字段判定后整条丢弃。若先拼成整行再回头用模式去切，
+-- 行内本来就有的 `, ` 结构分隔符与值里的逗号无法区分 —— 会把每条合法行都误判成非法。
+local function qx_server_line(n, tag)
+	local proto = props(n)
+	local host = (n.server or "") .. ":" .. tostring(n.port or 0)
+	local f = {}
+	if proto == "shadowsocks" then
+		f[#f + 1] = "method=" .. (n.method or n.cipher or "aes-256-gcm")
+		f[#f + 1] = "password=" .. (n.password or "")
+	elseif proto == "vmess" then
+		f[#f + 1] = "method=none"
+		f[#f + 1] = "password=" .. (n.uuid or "")
+		qx_transport(n, f)
+		qx_tls(n, f)
+	elseif proto == "vless" then
+		f[#f + 1] = "method=none"
+		f[#f + 1] = "password=" .. (n.uuid or "")
+		qx_transport(n, f)
+		qx_tls(n, f)
+	elseif proto == "trojan" then
+		f[#f + 1] = "password=" .. (n.password or "")
+		f[#f + 1] = "over-tls=true"
+		if n.sni then f[#f + 1] = "tls-host=" .. n.sni end
+	end
+	if #f == 0 then return nil end
+	for _, kv in ipairs(f) do
+		local v = kv:match("^[^=]*=(.*)$")
+		if v and v:find(",", 1, true) then return nil end
+	end
+	-- 节点名 / sni / path / host 全部来自订阅（不可信），含换行会截断本行并
+	-- 伪造出一条新的 server_local 行。tag 排在最后。
+	return util.one_line(
+		proto .. "=" .. host .. ", " .. table.concat(f, ", ") .. ", tag=" .. tag)
+end
+
 -- Quantumult X
 function M.to_qx(nodes, options)
 	options = options or {}
@@ -244,45 +284,19 @@ function M.to_qx(nodes, options)
 	local emitted = {}
 	out[#out + 1] = "[server_local]"
 	for _, n in ipairs(nodes or {}) do
-		local proto = props(n)
-		local host = (n.server or "") .. ":" .. tostring(n.port or 0)
-		local tag = n.name or host
-		-- 具名字段先攒成列表再拼接，而不是边拼字符串边追加：
-		-- 值里含逗号的条目在逗号分隔语法里表达不了（`password=pa,ss` 会被读成
-		-- `password=pa` 加一个悬空字段，凭据被静默截断），必须能逐字段判定后
-		-- 整条丢弃。若先拼成整行再回头用模式去切，行内本来就有的 `, ` 结构分隔
-		-- 符与值里的逗号无法区分 —— 会把每一条合法行都误判成非法。
-		local f = {}
-		if proto == "shadowsocks" then
-			f[#f + 1] = "method=" .. (n.method or n.cipher or "aes-256-gcm")
-			f[#f + 1] = "password=" .. (n.password or "")
-		elseif proto == "vmess" then
-			f[#f + 1] = "method=none"
-			f[#f + 1] = "password=" .. (n.uuid or "")
-			qx_transport(n, f)
-			qx_tls(n, f)
-		elseif proto == "vless" then
-			f[#f + 1] = "method=none"
-			f[#f + 1] = "password=" .. (n.uuid or "")
-			qx_transport(n, f)
-			qx_tls(n, f)
-		elseif proto == "trojan" then
-			f[#f + 1] = "password=" .. (n.password or "")
-			f[#f + 1] = "over-tls=true"
-			if n.sni then f[#f + 1] = "tls-host=" .. n.sni end
-		end
-		if #f > 0 then
-			local bad = false
-			for _, kv in ipairs(f) do
-				local v = kv:match("^[^=]*=(.*)$")
-				if v and v:find(",", 1, true) then bad = true break end
-			end
-			if not bad then
-				-- 节点名 / sni / path / host 全部来自订阅（不可信），含换行会截断
-				-- 本行并伪造出一条新的 server_local 行。tag 排在最后，名字里的
-				-- 逗号由 names_of 单独处理（不进 [policy] 成员列表）。
-				out[#out + 1] = util.one_line(
-					proto .. "=" .. host .. ", " .. table.concat(f, ", ") .. ", tag=" .. tag)
+		local tag = util.one_line(n.name or ((n.server or "") .. ":" .. tostring(n.port or 0)))
+		-- 名字里的逗号落在 `tag=` 的值上，而本行是逗号分隔的 `key=value` 序列，
+		-- 语法里没有引号 / 转义：`tag=A,B` 会被读成 `tag=A` 加一个悬空字段。
+		-- QX 对这种行的实际处置未经核实（本机没有 QX 可实测），但无论它是报错
+		-- 还是静默忽略，用户拿到的都不是他填的那个名字 —— 所以整条丢弃，与
+		-- Surge 家族丢 wireguard / ssr、Clash 原版丢不支持协议同一约定，也与
+		-- 下面 [policy] 成员列表的排除条件（names_of）保持一致。
+		-- 注意判定用 one_line 之后的名字：names_of 也是先 one_line 再比对，
+		-- 两边必须用同一个字符串，否则定义行与成员列表会对不上。
+		if not tag:find(",", 1, true) then
+			local line = qx_server_line(n, tag)
+			if line then
+				out[#out + 1] = line
 				emitted[#emitted + 1] = n
 			end
 		end

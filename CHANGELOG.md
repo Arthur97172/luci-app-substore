@@ -2,6 +2,87 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.11-r1] - P4：遗留项决策后实施（1.1 / 1.3 / 1.4 / 1.5 / 2.5，3.3 补文档）
+
+`docs/LEGACY_ISSUES.md`「五」的推荐方案中，除标记为**暂缓**的（2.1 / 2.2 / 2.4 /
+3.1 / 3.2 / 3.5）与**维持现状**的（2.3）外，其余全部实施。每项都补了自包含回归
+测试，并对 `HEAD` 做了反向验证 —— 新断言在修复前失败、修复后全绿：
+
+| 项 | 回归测试 | HEAD 上失败断言数 |
+|---|---|---|
+| 1.1 `mkdir` 锁 | `tests/list_lock_test.lua`（39 条） | 18 |
+| 1.3 sing-box `transport` | `tests/singbox_transport_test.lua`（28 条） | 18 |
+| 1.5 QX `tag=` 逗号 | `tests/qx_tag_comma_test.lua`（24 条） | 9 |
+
+全量：44 个 Lua 测试文件 + `tests/cron_result_test.sh`，全部通过。
+
+### 1.1 订阅列表读写加锁（`load()` → `save()` 丢更新）
+
+- 读整表、改、写整表全程无互斥：LuCI 页面保存订阅、cron 定时更新、组合订阅自动
+  重算三者同时发生时，后写者整表覆盖先写者，**订阅静默丢失且不报错**。
+- 本机没有 `nixio`（用不了 `flock`），Lua 5.1 的 `io.open` 也没有 `O_EXCL`，
+  因此用 `mkdir` 做锁（成功者唯一）。**陈旧锁回收**用锁目录**自身的 mtime** 判定，
+  而不是目录里的文件：mtime 由 `mkdir` 原子设好，不存在「目录已建、时间戳还没写」
+  的窗口。阈值 `util.LOCK_STALE = 60` 秒；持有者被 kill 后残留的锁最多 60 秒即可回收，
+  不会永久死锁（那比丢数据更糟 —— 订阅从此再也改不了）。
+- `core.lua` 新增 `with_list_lock`，把 7 个**写**入口（`add` / `add_local` /
+  `ensure_token` / `save_meta` / `remove` / `add_combo` / `save_combo`）统一包一层，
+  而不是在每个函数体里手写 acquire/release —— 后者一旦有人中途 `return`
+  （`if lerr then return nil, lerr end` 这种）就会漏掉释放。包在最外层则无论从哪条
+  路径返回都会释放。
+- **可重入**：`save_combo` 内部会调 `save_meta`，两者都要保护；不可重入的话第二次
+  取锁会把自己挡在门外，组合订阅永远保存不了。本进程已持锁时只加计数、不再取锁。
+- 实施中修正了推荐方案本身的两处疏漏：① 锁目录最初写成常量 `M.LOCK_DIR`，而测试
+  普遍在 `require` 之后改写 `core.DATA_DIR`，常量不会跟着变 —— 会去锁真实的
+  `/etc/substore`；改为由 `M.DATA_DIR` 现算。② 全新安装时 `DATA_DIR` 尚不存在，
+  `mkdir <DATA_DIR>/.lock` 失败，而失败在 `lock_acquire` 眼里等同于「他人持锁」，
+  症状是第一次保存订阅就报「正被另一个进程修改」；已在取锁前先 `ensure_dirs()`。
+- `M.merge` 是**只读**的（只读各订阅节点、过滤排序后返回数组），包进锁后一旦取锁
+  失败会返回 `nil` 顶掉原本的数组，把「拿不到锁」变成调用方眼里的「没有数据」——
+  比不加锁更糟。已移出包装列表。
+
+### 1.3 sing-box 读取侧 transport 整层丢失
+
+- 两个读取侧都不认 sing-box 的 `transport` 对象：`parser_json_config` 读的是
+  `outbound.network`（sing-box 出站里**根本没有这个字段**），简易 YAML 解析器只展开
+  `tls:` 子块。于是 ws / grpc / h2 节点全部按 tcp 导入 —— 客户端拿明文 tcp 去连
+  只开了 ws 的端口，握手必然失败且**不报错**。这类节点在机场导出的 sing-box 配置里
+  占比很高。简易 YAML 侧更彻底：`path` / `host` 连带都没带进 `node_data`。
+- 按上游 `configuration/shared/v2ray-transport/` 的字段名补全（已核实，非推测）：
+  ws → `path` + `headers.Host`；grpc → `service_name`；http → `path` + `host`
+  （**数组**，取首个）；httpupgrade → `path` + `host`（**单个字符串**）。`quic`
+  在本项目模型里没有对应传输方式，**不猜映射**。
+- 顺带补上 `tls.utls.fingerprint` → `fp`：简易 YAML 侧早就读了这个字段，JSON 侧一直
+  漏着，同一条订阅走两条导入路径会得到不同的节点。
+
+### 1.4 / 2.5 删除死代码
+
+- 删除 `converter.lua`、`node_converter.lua`、`parser_yaml.lua` 三个模块与四个对应
+  测试文件。三者均已确认无任何**实际**引用：前两者只被彼此与测试引用；
+  `parser_yaml.lua` 只被 `parser.lua` 一行 `require` 引入且从未使用（该行一并删除）。
+- `tests/p2_batch7_test.lua` 中对已删模块的依赖改为直接验证 `util.uuid` 本身 ——
+  那才是唯一在用的实现，形状要求（36 字符、只含十六进制与连字符）与当初一致。
+- `tests/parser_yaml_test.lua` **保留**：它实际 `require` 的是 `substore.parser`
+  （活跃路径），文件名有误导性但内容有效。
+
+### 1.5 QX 节点名含逗号时整条丢弃
+
+- `[server_local]` 行是逗号分隔的 `key=value` 序列，语法里没有引号 / 转义：节点名
+  `A,B` 输出成 `..., tag=A,B` 会被读成 `tag=A` 加一个悬空字段。QX 对这种行的实际
+  处置未经核实（本机没有 Quantumult X 可实测），但无论报错还是静默忽略，用户拿到的
+  都不是他填的那个名字。
+- 按推荐方案 B **整条丢弃**：定义行与 `[policy]` 成员一并去掉，与 Surge 家族丢
+  wireguard / ssr、Clash 原版丢不支持协议同一约定，也与 `names_of` 的排除条件
+  保持一致（判定用 `one_line` 之后的同一个字符串，两边不会再对不上）。
+- Surge 家族**不受影响**：其 `[Proxy]` 行是 `NAME = type, host, port, …`，名字在
+  `=` 左侧，逗号不影响该行解析。
+
+### 3.3 改名规则语法补文档说明
+
+- Lua 模式无 alternation 语义。`|` 表示「或」但只在**顶层**生效：`(a|b)` 不会展开成
+  「a 或 b」，而是按字面匹配；字符类 `[...]` 内的 `|` 同样是字面。已在
+  `README.md` / `README.en.md` 的「使用方法」补上说明。**无代码改动。**
+
 ## [2.6.10-r1] - P3：输出层代码级复审（11 项）+ README 精简
 
 对 8 个输出模块与 `output.lua` 做了逐行复审，按「生成的配置能否被目标客户端加载」

@@ -69,18 +69,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.10-r1`).
+> [Makefile](Makefile) (currently `2.6.11-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.10-r1.ipk
+opkg install luci-app-substore-2.6.11-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.10-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.11-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.
@@ -96,6 +96,11 @@ Then open LuCI: **Services → Subscriptions**.
    Refresh reloads the list.
 4. **Export** — pick one of the 15 output formats, or copy the subscription link
    to feed a downstream client (Passwall / OpenClash / …).
+
+> **Rename rules match with Lua patterns, not PCRE.** `|` means "or", but only at
+> the **top level**: `(a|b)` is not expanded into "a or b" — it matches literally,
+> requiring the name to actually contain `a|b`. Write `a|b` for alternatives, or
+> use separate rules. A `|` inside a character class `[...]` is literal too.
 
 ## Project layout
 

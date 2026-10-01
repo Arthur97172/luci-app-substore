@@ -7,11 +7,16 @@ local parser = require("substore.parser")
 
 local M = {}
 
-M.version = "2.6.10"
+M.version = "2.6.11"
 M.DATA_DIR = "/etc/substore"
 M.LIST_FILE = M.DATA_DIR .. "/subscriptions.json"
 M.NODES_DIR = M.DATA_DIR .. "/nodes"
 M.CRON_FILE = "/etc/cron.d/substore"
+-- 列表文件的互斥锁超时（秒）。锁目录固定为 DATA_DIR 下的 .lock，
+-- 由 with_list_lock 现算 —— 不做成常量：那样任何改了 DATA_DIR 的调用方
+-- （测试、或将来支持自定义数据目录）都必须记得同步改它，忘了就会去锁真实
+-- 的 /etc/substore，症状是写入全部报「正被另一个进程修改」。
+M.LOCK_STALE = util.LOCK_STALE
 
 M.MAX_SIZE = 10 * 1024 * 1024 -- 10MB
 M.TIMEOUT = 20
@@ -87,6 +92,41 @@ local function save(seq, items)
 	-- 0600：列表里有订阅 URL 与公开下载 token
 	return util.atomic_write(M.LIST_FILE, util.json_encode({ _seq = seq, items = items }), "600")
 end
+
+-- 把「读整表 → 改 → 写整表」串行化。
+--
+-- 没有锁时，LuCI 页面保存订阅、cron 定时更新、组合订阅自动重算三者同时发生，
+-- 后写者会整表覆盖先写者 —— 用户新增的订阅静默消失，且没有任何报错。
+--
+-- **可重入**：save_combo 内部会调 save_meta，两者都要保护。若第二次调用再去
+-- 抢锁，会把自己挡在门外（mkdir 已被本进程建过）并返回「正被占用」，
+-- 于是嵌套的调用必定失败。所以本进程已持锁时只加计数、不再取锁。
+-- 跨进程互斥仍由 util.lock_acquire 的 mkdir 保证。
+local lock_depth = 0
+local function with_list_lock(f)
+	-- 锁目录是 DATA_DIR 的子目录，父目录不存在时 mkdir 直接失败，
+	-- 而失败在 lock_acquire 眼里等同于「别人正持有」—— 全新安装上第一次
+	-- 保存订阅就会报「正被另一个进程修改」。所以先把目录建出来。
+	M.ensure_dirs()
+	if lock_depth > 0 then
+		lock_depth = lock_depth + 1
+		local a, b = f()
+		lock_depth = lock_depth - 1
+		return a, b
+	end
+	local lock_dir = M.DATA_DIR .. "/.lock"
+	if not util.lock_acquire(lock_dir, { stale = M.LOCK_STALE }) then
+		return nil, "订阅列表正被另一个进程修改，请稍后重试"
+	end
+	lock_depth = 1
+	local a, b = f()
+	lock_depth = 0
+	util.lock_release(lock_dir)
+	return a, b
+end
+-- 注：f 抛异常时不会走到释放，锁会留在盘上。这是有意不捕获的 —— 用 pcall
+-- 包住会把异常改成返回值，调用方（控制器 / cron）看到的错误形态就变了。
+-- 残留锁由 util.lock_acquire 的陈旧回收兜底：超过 LOCK_STALE 秒后自动可回收。
 
 -- 返回 arr, err。err 非空表示列表文件已损坏。
 -- 整体无法解析时 arr 为空；只有部分条目非法时 arr 仍包含能用的条目
@@ -672,6 +712,33 @@ function M.write_cron()
 		return true
 	end
 	return util.atomic_write(M.CRON_FILE, table.concat(lines, "\n") .. "\n")
+end
+
+-- ---------- 写入口的列表锁 ----------
+--
+-- 逐个函数改名再包一层，而不是在每个函数体里手写 acquire/release：
+-- 后者一旦有人在中途 return（`if lerr then return nil, lerr end` 这种）就会漏掉
+-- 释放，而漏释放的症状是「过一会儿自己好了」（陈旧回收），最难查。
+-- 包在最外层则无论函数从哪条路径返回都会释放。
+--
+-- 只包**写**入口。M.list / M.get / M.read_nodes / M.merge 是只读的（merge 只
+-- 读各订阅的节点、过滤排序后返回数组，从不写列表），加锁会让每次页面刷新都去
+-- 抢锁，白白增加失败面 —— 而且失败时它们会返回 nil 而不是原本的数组/表，
+-- 把「拿不到锁」变成调用方眼里的「没有数据」，比不加锁更糟。
+-- M.sync / M.combo_refresh / M.refresh_combos 自己不写列表（写列表的是它们内部
+-- 调用的 M.save_meta），因此也不在此列 —— 它们经由被包住的 save_meta 进入临界区。
+for _, name in ipairs({
+	"add", "add_local", "ensure_token", "save_meta",
+	"remove", "add_combo", "save_combo",
+}) do
+	local inner = M[name]
+	M[name] = function(...)
+		-- Lua 5.1 不允许在内层函数里直接用外层函数的 `...`，先收进表再展开。
+		-- 这些入口的参数都是位置参数且非 nil（可选参数一律排在最后），
+		-- 不存在中间空洞把 unpack 截断的情况。
+		local args = { ... }
+		return with_list_lock(function() return inner(unpack(args)) end)
+	end
 end
 
 return M
