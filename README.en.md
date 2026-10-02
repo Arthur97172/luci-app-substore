@@ -84,20 +84,20 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.17-r1`).
+> [Makefile](Makefile) (currently `2.7.0-r1`).
 
 **Minimum supported: OpenWrt / ImmortalWrt 23.05** (older releases are out of scope).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.17-r1.ipk
+opkg install luci-app-substore-2.7.0-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.17-r1.apk
+apk add --allow-untrusted luci-app-substore-2.7.0-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.
@@ -240,7 +240,7 @@ silently dropped. **Access control**: the `luci-app-substore` ACL group takes ef
 through `menu.d`'s `depends.acl` — unauthorised LuCI users do not see the app, and
 **direct URL access is refused with 403** (the ucode dispatcher validates the
 `depends.acl` accumulated along the request path at dispatch time; verified against
-upstream source, not measured on a device). See
+upstream source **and measured on a device**). See
 [docs/SECURITY.md](docs/SECURITY.md) for how to grant it.
 
 Data on disk: `/etc/substore` is `0700`, and `subscriptions.json` / `nodes/*.json`

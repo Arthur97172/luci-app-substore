@@ -47,11 +47,12 @@
 6. 输入源：导入 Clash YAML / sing-box JSON / V2Ray JSON / Surge / QX 配置验证解析
 7. 定时更新：修改 Settings cron，验证 `/etc/cron.d/substore` 生成
 8. 规则应用：设置协议过滤、关键词，验证节点列表/输出受影响
-9. **ACL**：新建一个非 root 的 LuCI 用户（不在 `luci-app-substore` 组内），登录后
-   应**看不到**本应用入口；再把该用户加入组，入口应出现。
-   另需验证**直接访问 URL**（`/cgi-bin/luci/admin/services/substore/list`）返回
-   **403 Forbidden**（依据：ucode dispatcher 在 `dispatch()` 里对路径上累积的
-   `depends.acl` 做校验，不足即 403 —— 已从上游源码核实，但**未在设备上实测**）
+9. **ACL** —— ✅ **已于 2026-10-02 在设备上实测通过**：新建一个非 root 的 LuCI 用户
+   （不在 `luci-app-substore` 组内），登录后**看不到**本应用入口；把该用户加入组后
+   入口**出现**；该用户**直接访问 URL**
+   （`/cgi-bin/luci/admin/services/substore/list`）返回 **403 Forbidden**
+   （依据：ucode dispatcher 在 `dispatch()` 里对路径上累积的 `depends.acl` 做校验，
+   不足即 403 —— 已从上游源码核实，并已由本次设备实测确认）
 10. **表单 token**：提交任一写操作（保存订阅 / 删除 / 节点保存）应正常生效；
     手工构造一个缺 `token` 或 token 不匹配的 POST，应看到**错误提示**而不是静默无反应
 

@@ -72,20 +72,20 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.17-r1`）。
+> （当前 `2.7.0-r1`）。
 
 **最低支持 OpenWrt / ImmortalWrt 23.05**（更早的版本不在支持范围内）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.17-r1.ipk
+opkg install luci-app-substore-2.7.0-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.17-r1.apk
+apk add --allow-untrusted luci-app-substore-2.7.0-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。
@@ -206,7 +206,7 @@ DNS rebinding 的 TOCTOU 窗口）；wget 后端没有等价手段，**直接拒
 原因**，不会静默丢弃。**访问控制**：`luci-app-substore` ACL 组经 `menu.d` 的
 `depends.acl` 生效 —— 未获授权的 LuCI 用户看不到本应用入口，**直接访问 URL 也会
 被拒（403）**（依据：ucode dispatcher 在分发时校验路径上累积的 `depends.acl`，
-已从上游源码核实；未在设备上实测）。授权方式见 [docs/SECURITY.md](docs/SECURITY.md)。
+已从上游源码核实，并**已在设备上实测通过**）。授权方式见 [docs/SECURITY.md](docs/SECURITY.md)。
 
 数据落盘权限：`/etc/substore` 目录 `0700`，`subscriptions.json` 与 `nodes/*.json`
 `0600`（前者含订阅 URL 与公开下载 token，后者含 uuid / 密码 / 私钥）——

@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.0-r1] - ACL 设备实测通过（关闭 2.6.16-r1 遗留的「未实测」）
+
+**纯文档变更，无代码改动**（`core.lua` 仅同步版本号）。
+
+### 背景
+
+`[2.6.16-r1]` 引入的 ACL 组（`rpcd/acl.d/luci-app-substore.json` + `menu.d` 的
+`depends.acl`）当时只做到**读上游源码核实**：结论是 ucode dispatcher 在 `dispatch()`
+里校验路径上累积的 `depends.acl`，不足即 403，因此这是**入口级**门禁而非仅菜单隐藏。
+本机无 LuCI 运行环境，故在 `docs/SECURITY.md`、`docs/TESTING.md` 第 9 项、
+`docs/LEGACY_ISSUES.md` 1.2 与两份 README 中都**如实标注为「未在设备上实测」**。
+
+### 本轮变更
+
+按 `docs/TESTING.md` 第 9 项在目标设备完成复核，**三项断言全部通过**：
+
+| 断言 | 结果 |
+|------|------|
+| 非 root 且不在 `luci-app-substore` 组内的 LuCI 用户 | **看不到**本应用菜单入口 |
+| 把该用户加入组后 | 入口**出现** |
+| 该用户直接访问 `/cgi-bin/luci/admin/services/substore/list` | 返回 **403 Forbidden** |
+
+其中第三项是此前唯一「仅有源码依据」的结论 —— 现已在真实设备上确认，
+**入口级 403 的语义成立**，读源码得出的推断与实测一致。
+
+同步更新的文件：
+
+- `docs/SECURITY.md`「访问控制」：末条改为「已在设备上实测通过」并写明三项结果；
+  「安全测试」小节从未验证清单中移除 ACL（模板渲染与 cron 落盘**仍未验证**，保持标注）
+- `docs/TESTING.md` 第 9 项：标记 ✅ 已实测通过
+- `docs/LEGACY_ISSUES.md` 1.2：将「仍未做的验证」改写为「设备实测（已完成并通过）」，
+  逐条列出三项断言
+- `README.md` / `README.en.md`：安全小节的「未在设备上实测 / not measured on a device」
+  改为「已在设备上实测通过 / measured on a device」
+
+### 未做
+
+- **未记录实测固件版本** —— 用户未提供，不臆测填写
+- LuCI 模板渲染、cron 落盘行为**仍未在设备上验证**（这两项与 ACL 无关，维持原标注）
+
+### 历史条目说明
+
+`[2.6.16-r1]` / `[2.6.17-r1]` 中「未在设备上实测」的记载是那两个版本**当时**的真实
+状态，按惯例**不改写历史条目**；本条即为其后续结论。
+
 ## [2.6.17-r1] - 明确最低支持系统为 OpenWrt / ImmortalWrt 23.05
 
 **纯文档变更，无代码改动**（`core.lua` 仅同步版本号）。

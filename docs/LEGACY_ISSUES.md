@@ -125,9 +125,14 @@ menu.d 用 `"depends": { "acl": [ "<组名>" ] }` 引用。
   即上面那套入口级 403 语义。因此**无需**为旧版补 `entry.acl_depends` —— 记录在此
   只为说明「为什么 22.03 不在支持范围内时这个缺口可以不管」，不是待办。
 
-**仍未做的验证（如实记录）**：以上结论来自**读上游源码**，本机**无 LuCI 运行环境**，
-未在设备上实测。请在目标设备按 `docs/TESTING.md` 第 9 项复核：未授权用户应看不到
-菜单入口，**且**直接访问 `/cgi-bin/luci/admin/services/substore/list` 应返回 403。
+**设备实测（已完成并通过，2026-10-02）**：以上结论最初来自**读上游源码**（本机无
+LuCI 运行环境），随后按 `docs/TESTING.md` 第 9 项在目标设备复核，**三项断言全部通过**：
+
+- 非 root 且不在 `luci-app-substore` 组内的 LuCI 用户：**看不到**本应用菜单入口
+- 把该用户加入组后：入口**出现**
+- 该用户**直接访问** `/cgi-bin/luci/admin/services/substore/list`：返回 **403 Forbidden**
+
+即：入口级 403 的语义在真实设备上成立，与上文读源码得出的推断一致。
 
 **回滚方式**：删除 `root/usr/share/rpcd/acl.d/luci-app-substore.json`（及 Makefile 中
 对应的两行安装规则），并移除 `menu.d` 两个条目里的 `depends` 块。
