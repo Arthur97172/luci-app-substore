@@ -26,7 +26,8 @@
   同一个链接只有用绑定的客户端才解析得出真实节点，用错会得到「与您使用客户端不兼容」
   的占位节点（能解析成功，但全是 `127.0.0.1:1080` 的假节点）
 - **组合订阅**：把任意子集的现有订阅合并成一个新订阅，拥有独立名称、token 与订阅链接；
-  源订阅更新后组合自动重算
+  源订阅更新或**被删除**后组合自动重算（删除时死 id 会从「来源」里摘掉，
+  来源被删光则报错，而不是静默变成 0 节点）
 - **本地订阅**：不填 URL，直接粘贴节点文本导入（一次一种格式，自动判定），
   或用表单按协议动态字段逐条录入节点
 
@@ -71,18 +72,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.14-r1`）。
+> （当前 `2.6.15-r1`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.14-r1.ipk
+opkg install luci-app-substore-2.6.15-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.14-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.15-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。

@@ -7,7 +7,7 @@ local parser = require("substore.parser")
 
 local M = {}
 
-M.version = "2.6.14"
+M.version = "2.6.15"
 M.DATA_DIR = "/etc/substore"
 M.LIST_FILE = M.DATA_DIR .. "/subscriptions.json"
 M.NODES_DIR = M.DATA_DIR .. "/nodes"
@@ -340,8 +340,41 @@ function M.remove(id)
 	if lerr then return false, lerr end
 	if not items[id] then return false end
 	items[id] = nil
+	-- 引用这个订阅的组合：把死 id 从 sources 里摘掉，同时记下要重算的组合。
+	--
+	-- 必须**在同一趟里**收集，不能摘完再调 M.refresh_combos(id)：后者是按
+	-- 「sources 里包含 src_id」来筛组合的，死 id 一旦摘掉就一个都匹配不到，
+	-- 物化节点会一直是旧的 —— 看着改了，其实没修。
+	--
+	-- 摘掉死 id 而不是留着：留着的话列表页「来源」列会显示 s00000003 这种裸 id
+	-- （模板用 name_by_id[sid] or sid 兜底），而且当组合的来源被删光时，
+	-- combo_refresh 看到 #srcs > 0，不会给出「请选择至少一个订阅」，
+	-- 组合会静默变成 0 节点。与列表同一次写盘落盘，不留下中间状态。
+	local affected = {}
+	for cid, c in pairs(items) do
+		local srcs = type(c.sources) == "table" and c.sources or nil
+		if srcs then
+			local kept, hit = {}, false
+			for _, s in ipairs(srcs) do
+				if s == id then hit = true else kept[#kept + 1] = s end
+			end
+			if hit then
+				c.sources = kept
+				affected[#affected + 1] = cid
+			end
+		end
+	end
 	save(seq, items)
 	os.remove(M.nodes_file(id))
+	-- 组合的物化节点在 nodes/<combo>.json，只有 combo_refresh 会重写它。
+	-- 不在这里重算的话，组合的下载链接会继续吐已删订阅的节点，一直等到别的源
+	-- 更新（M.sync 里那次 refresh_combos）才被动纠正。
+	--
+	-- 位置与 M.sync 一致：都在写入口内部调用，由 save_meta 进入临界区
+	-- （with_list_lock 可重入，见文件末尾的说明）。
+	for _, cid in ipairs(affected) do
+		M.combo_refresh(cid)
+	end
 	return true
 end
 

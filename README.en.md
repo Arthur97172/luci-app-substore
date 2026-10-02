@@ -29,7 +29,9 @@ group them, then re-emit them in a format your client can consume.
   real nodes for its bound client; a wrong UA returns a "client incompatible"
   placeholder (which still parses, but is nothing but fake `127.0.0.1:1080` nodes)
 - **Combined subscriptions**: merge any subset of existing subscriptions into a new
-  one with its own name, token and link; it is recomputed when a source updates
+  one with its own name, token and link; it is recomputed when a source updates or
+  is **deleted** (the dead id is pruned from its sources; deleting every source
+  reports an error instead of silently becoming a 0-node combo)
 - **Local subscriptions**: paste node text directly (one format at a time,
   auto-detected) instead of providing a URL, or enter nodes field by field
 
@@ -82,18 +84,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.14-r1`).
+> [Makefile](Makefile) (currently `2.6.15-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.14-r1.ipk
+opkg install luci-app-substore-2.6.15-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.14-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.15-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.

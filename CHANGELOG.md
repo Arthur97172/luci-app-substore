@@ -2,6 +2,54 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.15-r1] - 修复：删除订阅后引用它的组合订阅不重算
+
+### 缺陷
+
+删除一个订阅后，引用它的**组合订阅**会继续输出该订阅的节点：
+
+- 组合的节点物化在 `nodes/<combo_id>.json`，只有 `combo_refresh` 会重写它；
+- 会触发重算的路径只有 `M.sync`（源更新时）与三个节点级控制器入口
+  （`action_node_save` / `action_node_delete` / `action_node_set_group`），
+  **删除订阅这条路径从未调用过**；
+- 结果：删掉源订阅后，组合的下载链接
+  （`/substore/download?token=<combo>&target=...`）继续吐已删订阅的节点，
+  直到别的源更新时才被动纠正 —— 看着改了，其实没修。
+
+### 修复（`core.remove`）
+
+在**数据不变量**层面修，而不是在控制器里补一次调用：与 `add_combo` / `save_combo`
+在写入口内部调用 `combo_refresh` 的做法保持一致。
+
+删除订阅时，在同一次 `pairs(items)` 遍历里处理每个组合的 `sources`：
+
+1. **摘掉**死 id（不是留着），并记下受影响的组合 id；
+2. 与订阅列表**同一次写盘**落盘，不留下「列表已删、`sources` 还引用」的中间状态；
+3. 写盘后对每个受影响的组合调用 `combo_refresh`，立刻重算物化节点。
+
+摘掉死 id 而不是留着，有两个实际原因：列表页「来源」列用 `name_by_id[sid] or sid`
+兜底，留着就会显示 `s00000003` 这种裸 id；而且当组合的来源被删光时，
+`combo_refresh` 看到 `#srcs > 0`，不会给出「请选择至少一个订阅」，
+组合会**静默变成 0 节点**。摘掉后能正确报错。
+
+**实现上的坑**：不能先摘 `sources` 再调用 `M.refresh_combos(id)` —— 后者是按
+「`sources` 里包含 `src_id`」来筛组合的，死 id 一旦摘掉就一个都匹配不到。
+必须在同一趟里收集受影响的组合 id，再直接对每个调用 `combo_refresh`。
+
+### 测试
+
+`tests/core_combo_test.lua` 增加 13 项（23 → 36 项）：
+
+- 删除源后组合的 `node_count` **立刻**下降，物化节点里不再有已删源的节点
+- 下载链接（真正被 Passwall / OpenClash 拉取的东西）不再含已删源的节点名，
+  且保留其余源的节点
+- 死 id 已从 `sources` 摘掉
+- 来源被删光时报错（`error` 非空、`node_count == 0`、`sources` 为空）
+- 只被某个组合引用的订阅被删后该组合被清空，**无关组合不受影响**
+
+反向验证：拆掉本次改动后 8 项断言失败；只加刷新、不做剪除的变体恰好 3 项剪除断言失败 ——
+两半都是承重的，不是恒真断言。
+
 ## [2.6.14-r1] - 订阅列表页勾选批量删除 + 「自定义」User-Agent 用法说明
 
 ### 新增：订阅列表页的勾选批量删除
