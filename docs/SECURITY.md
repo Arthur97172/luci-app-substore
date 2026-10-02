@@ -51,7 +51,8 @@
   `admin/services/substore` 上的 ACL 已覆盖其下**全部 18 个** `entry`
   （form / nodes / delete / save / update / probe …）。
   旧版 Lua dispatcher（≤ 22.03）行为不同：menu.d 的 `depends.acl` 只影响菜单渲染，
-  入口级需另补 `entry.acl_depends`（本轮未做，见 LEGACY_ISSUES 1.2）。
+  入口级需另补 `entry.acl_depends` —— 但**本项目最低支持 23.05**，不在支持范围内，
+  故无需处理（见 LEGACY_ISSUES 1.2）。
   **未在设备上实测** —— 需按 TESTING.md 第 9 项复核（含直接访问 URL 应 403）。
 - **表单 token**：写操作要求 `token` 存在、非空，并在可取到时与
   `luci.dispatcher.context.authtoken` 比对（该值正是模板中 `token` 的来源），

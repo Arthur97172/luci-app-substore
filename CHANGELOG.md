@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.17-r1] - 明确最低支持系统为 OpenWrt / ImmortalWrt 23.05
+
+**纯文档变更，无代码改动**（`core.lua` 仅同步版本号）。
+
+### 背景
+
+`[2.6.16-r1]` 引入的 ACL 组靠 `menu.d` 的 `depends.acl` 生效。核实上游源码后确认：
+**入口级 403 的语义只存在于 ucode dispatcher（23.05 起）**；旧版 Lua dispatcher
+（≤ 22.03）里 menu.d 的 `depends.acl` 只影响菜单渲染，入口级拦截需另补
+`entry.acl_depends`。
+
+本项目的处置是**明确支持边界**，而不是为旧版补 `entry.acl_depends`：
+最低支持 **OpenWrt / ImmortalWrt 23.05**，更早的版本不在支持范围内。这样 ACL 的
+入口级语义在支持范围内始终成立，无需维护两套 dispatcher 分支。
+
+### 变更
+
+- `README.md` / `README.en.md` / `docs/INSTALL.md`：安装小节新增最低支持版本声明
+- `docs/LEGACY_ISSUES.md` 1.2、`docs/SECURITY.md`「访问控制」：旧版 dispatcher 段落
+  改述为「不在支持范围内，故无需处理」，并注明依据（用户 2026-10-02 确认）
+- 版本号同步：`Makefile` `PKG_VERSION` → 2.6.17、`core.lua` `M.version`、
+  三处安装文档中的包名
+
+### 未做
+
+- 未新增 `entry.acl_depends`（按上述支持边界，无必要）
+- 未在设备上实测 ACL 拦截效果 —— 仍需按 `docs/TESTING.md` 第 9 项复核
+
 ## [2.6.16-r1] - 安全与数据完整性：wget SSRF 缺口、token 校验、ACL、静默失败
 
 本轮按 `docs/LEGACY_ISSUES.md`「六」的处置优先级 1–8 实施。**每项都补了自包含回归

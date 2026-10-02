@@ -117,14 +117,13 @@ menu.d 用 `"depends": { "acl": [ "<组名>" ] }` 引用。
   `admin/services/substore` 上，就已覆盖它的**全部子路由**
   （`form` / `nodes` / `delete` / `save` / `node_save` / `update` / `probe` …）。
   本应用的所有动作都在该节点之下，因此这 18 个 `entry` 一并受保护。
-- **legacy Lua dispatcher（≤ 22.03）行为不同**：`luasrc/dispatcher.lua` 里
-  `menu_json()` 把控制器树与 menu.d 树 merge 后 `apply_tree_acls`，那只影响
-  **菜单渲染**；而 `dispatch()` 用的是控制器树，其 `depends.acl` 只来自
-  `entry.acl_depends`。因此在这套 dispatcher 上，仅靠 menu.d 只有「菜单看不见」。
-  若需在旧版上也做入口级门禁，可在控制器 `entry` 上补 `acl_depends`
-  （已核实 `entry()` 返回节点、`process_lua_controller` 会读取 `entry.acl_depends`
-  并追加进 `depends.acl`）。本轮**未做**：本包依赖 `luci-lua-runtime` + `luci-compat`，
-  面向的是现代 LuCI，补它是为旧版兜底，属另一件事。
+- **旧版 Lua dispatcher（≤ 22.03）行为不同，但不在支持范围内**：`luasrc/dispatcher.lua`
+  里 `menu_json()` 把控制器树与 menu.d 树 merge 后 `apply_tree_acls`，那只影响
+  **菜单渲染**；`dispatch()` 用的是控制器树，其 `depends.acl` 只来自
+  `entry.acl_depends`。也就是说在 22.03 上仅靠 menu.d 只有「菜单看不见」。
+  **本项目最低支持 23.05**（用户 2026-10-02 确认），23.05 起用的是 ucode dispatcher，
+  即上面那套入口级 403 语义。因此**无需**为旧版补 `entry.acl_depends` —— 记录在此
+  只为说明「为什么 22.03 不在支持范围内时这个缺口可以不管」，不是待办。
 
 **仍未做的验证（如实记录）**：以上结论来自**读上游源码**，本机**无 LuCI 运行环境**，
 未在设备上实测。请在目标设备按 `docs/TESTING.md` 第 9 项复核：未授权用户应看不到
