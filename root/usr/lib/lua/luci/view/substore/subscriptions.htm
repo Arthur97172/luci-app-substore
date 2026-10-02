@@ -69,7 +69,10 @@
 			status_text = luci.i18n.translate("OK")
 		end
 		local sub_token = core.ensure_token(it.id)
-		local sub_link_base = prefix .. "?token=" .. sub_token .. "&target="
+		-- ensure_token 在「token 写不进列表文件」时返回 nil：此时链接必然无效，
+		-- 用空 token 拼出来，让下载端报「无效的订阅 token」，
+		-- 而不是在模板里对 nil 做字符串拼接直接 500。
+		local sub_link_base = prefix .. "?token=" .. (sub_token or "") .. "&target="
 		-- 还没解析出节点时禁用格式下拉：刚添加还没点「更新」、更新失败、
 		-- 或解析结果为空的订阅，转出来的内容必然是空的。让用户能选，
 		-- 等于引导他生成一个无效的订阅链接（选了也只是得到一个空结果）。

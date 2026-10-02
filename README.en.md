@@ -84,18 +84,18 @@ group them, then re-emit them in a format your client can consume.
 ## Installation
 
 > The version in the package name must match `PKG_VERSION` / `PKG_RELEASE` in the
-> [Makefile](Makefile) (currently `2.6.15-r1`).
+> [Makefile](Makefile) (currently `2.6.16-r1`).
 
 opkg (OpenWrt / ImmortalWrt 24.10 and earlier):
 
 ```bash
-opkg install luci-app-substore-2.6.15-r1.ipk
+opkg install luci-app-substore-2.6.16-r1.ipk
 ```
 
 apk (OpenWrt / ImmortalWrt 25.12+):
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.15-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.16-r1.apk
 ```
 
 Then open LuCI: **Services → Subscriptions**.
@@ -117,6 +117,42 @@ Then open LuCI: **Services → Subscriptions**.
 > requiring the name to actually contain `a|b`. Write `a|b` for alternatives, or
 > use separate rules. A `|` inside a character class `[...]` is literal too.
 
+## Known limitations
+
+Each of these is a **code-audit-confirmed** limitation kept deliberately, not an
+oversight; the reasoning for each is in
+[docs/LEGACY_ISSUES.md](docs/LEGACY_ISSUES.md) (Chinese).
+
+- **Mixed-format text import is rejected** — pasted node text may contain only one
+  format at a time (URI / Base64 / YAML / JSON / WireGuard `.conf`); protocols may
+  be mixed *within* that format. Mixing formats fails with an explicit error naming
+  the formats found, instead of silently dropping part of the input.
+  **Remote subscriptions are not affected**: mixed content there is still resolved
+  by priority to a single format (unchanged historical behaviour).
+- **hysteria v1 exported to sing-box needs `up` / `down` (bandwidth) added by hand** —
+  the node model carries no bandwidth field, and inventing a default would be a guess.
+- **hysteria v1 URIs are only guaranteed round-trip faithful** (this package's export →
+  this package's import) — the upstream URI spec could not be verified (its docs site
+  has been 404ing), so unrecognised query parameters are ignored rather than
+  given an invented meaning.
+- **`http` cannot be created by hand in the UI** — it is absent from the authoritative
+  protocol list, so the form does not offer it; it can still be imported from
+  Clash / JSON configs and exported normally.
+- **AmneziaWG options are a single JSON text box** in the UI (`amnezia-wg-option`) —
+  the data round-trips correctly, but has to be written as JSON by hand.
+- **On the wget backend, size and redirect checks happen *after* the request is sent** —
+  busybox wget has no equivalent of `--max-filesize` / `--max-redirect`. An oversized
+  response is **discarded and reported as an error** (it never reaches the parser), and
+  every redirect hop is **re-checked** with any private/reserved hop rejecting the whole
+  download; the only difference is that both checks land after the request went out.
+  **Installing curl avoids this entirely** (the curl path uses `--max-filesize` and
+  `--max-redirs 0` to stop before sending).
+- **On a box with no DNS resolution capability at all, the wget backend refuses to
+  download domain subscriptions** — pre-flight validation cannot check the target there,
+  and wget lacks curl's `%{remote_ip}` for a post-connect re-check, so it refuses rather
+  than allowing an unverifiable target (the error suggests installing curl). Literal IP
+  targets and boxes that do have a resolver are unaffected.
+
 ## Project layout
 
 ```
@@ -134,6 +170,7 @@ Then open LuCI: **Services → Subscriptions**.
 │   │   │   └── view/substore/*.htm             # templates
 │   │   └── share/
 │   │       ├── luci/menu.d/luci-app-substore.json
+│   │       ├── rpcd/acl.d/luci-app-substore.json  # ACL group (referenced by menu depends.acl)
 │   │       └── substore/*.lua    # core logic (no luci.* dependency)
 ├── po/zh-cn/substore.po          # 简体中文 translations
 ├── docs/                         # design & guides
@@ -180,13 +217,29 @@ Target-device verification is required for the LuCI UI and cron behaviour — se
 ## Security
 
 SSRF protection (private / reserved / link-local ranges rejected; a hostname that
-**fails to resolve is rejected** rather than allowed, so "unresolvable ⇒ pass" is not
-a bypass), protocol whitelisting and port range validation (1–65535), response size &
-timeout limits, download temp files removed on every exit path (`/tmp` is a tmpfs),
-command-injection defence (whitelisted parsing + shell quoting, plus probe targets
-starting with `-` rejected — busybox `getopt` would read them as options),
-token-based access control on the public download endpoint, and no credentials in
-logs.
+**fails to resolve is rejected** when a resolver is available, so "unresolvable ⇒ pass"
+is not a bypass; every redirect hop is re-checked), protocol whitelisting and port range
+validation (1–65535), response size & timeout limits, download temp files removed on
+every exit path (`/tmp` is a tmpfs), command-injection defence (whitelisted parsing +
+shell quoting, plus probe targets starting with `-` rejected — busybox `getopt` would
+read them as options), token-based access control on the public download endpoint, and
+no credentials in logs.
+
+**On a box with no DNS resolver** (neither nixio nor `nslookup`), domain targets cannot
+be validated before the request; the curl backend then re-checks the actual peer address
+via `%{remote_ip}` **after connecting** (which also closes the DNS-rebinding TOCTOU
+window), while the wget backend has no equivalent and **refuses** instead of allowing it
+(see "Known limitations").
+
+**Form submission validation**: write actions require a `token` that is present and
+non-empty, and — when available — equal to LuCI's `context.authtoken` (the very value
+the framework's templates put in `token`); a failure is **reported back** rather than
+silently dropped. **Access control**: the `luci-app-substore` ACL group takes effect
+through `menu.d`'s `depends.acl` — unauthorised LuCI users do not see the app, and
+**direct URL access is refused with 403** (the ucode dispatcher validates the
+`depends.acl` accumulated along the request path at dispatch time; verified against
+upstream source, not measured on a device). See
+[docs/SECURITY.md](docs/SECURITY.md) for how to grant it.
 
 Data on disk: `/etc/substore` is `0700`, and `subscriptions.json` / `nodes/*.json`
 are `0600` — the former holds subscription URLs and public download tokens, the

@@ -96,6 +96,98 @@ function M.detect(content)
 	return "unknown"
 end
 
+-- 「混合格式」提示里各格式的显示名
+local FORMAT_LABELS = {
+	uri = "URI 链接",
+	json = "JSON",
+	yaml = "Clash YAML",
+	["wireguard-conf"] = "WireGuard .conf",
+	surge = "Surge/Loon 配置",
+}
+
+-- 行首锚定，数出「整行就是一条节点链接」的行数。
+--
+-- 不能用 detect() 里那条宽松的 `content:find("://")`：Clash YAML 的
+-- `url: https://…`、sing-box JSON 的 `"url": "https://…"` 都含 "://"，
+-- 拿它当 URI 判据的话，一份**完全正常**、只是带了个订阅地址的配置
+-- 会被判成「YAML + URI 混合」而拒绝导入 —— 误判比漏报更糟。
+-- 锚定行首之后，只有「一行就是一条链接」才算数，那正是 URI 订阅的形态。
+local function count_uri_lines(content)
+	local n = 0
+	for line in content:gmatch("[^\r\n]+") do
+		local scheme = line:match("^%s*(%a[%w]*):/")
+		if scheme and SUPPORTED[scheme:lower()] then n = n + 1 end
+	end
+	return n
+end
+
+-- INI 段头：`[Interface]` / `[Peer]` / `[Proxy]` / `[server_local]`
+-- 它们同样以 "[" 开头，但**不是** JSON 数组。
+-- detect() 靠判断次序避开了这一点（surge 与 .conf 都排在 "[" 之前，先命中就返回），
+-- 而 detect_all 是「全部收集」，次序挡不住，必须显式排除 ——
+-- 否则一份完全正常的 Surge 配置会被判成「Surge + JSON 混合」而拒绝导入。
+local function is_ini_section_head(line)
+	return line:match("^%s*%[%a[%w_%-%s]*%]%s*$") ~= nil
+end
+
+-- 行首的 JSON 对象起始：`{` 单独一行，或 `{"key"…`。
+-- 对象的第一个键必然是带引号的字符串，因此 YAML 的流式映射 `{path: /x}`
+-- （未加引号的键）不会被误判成 JSON。
+local function has_json_object_line(content)
+	for line in content:gmatch("[^\r\n]+") do
+		if line:match("^%s*{%s*$") or line:match('^%s*{%s*"') then return true end
+	end
+	return false
+end
+
+-- 行首的 JSON 数组起始，排除 INI 段头
+local function has_json_array_line(content)
+	for line in content:gmatch("[^\r\n]+") do
+		if line:match("^%s*%[") and not is_ini_section_head(line) then return true end
+	end
+	return false
+end
+
+-- 内容**同时**命中的全部格式，按 detect() 的优先级排列。
+--
+-- 只服务于「混合格式」提示（见 M.parse_local 的文本模式）：detect() 只返回
+-- 优先级最高的那一个，其余格式的内容会被**静默丢弃** —— 粘进「URI + WG conf」，
+-- 只导入到 WG 节点；粘进「URI + JSON」，只导入到 URI 节点。而 parse 返回的是
+-- 合法表，同步报成功，用户以为整份都导进来了。
+--
+-- 判据必须从严：这个返回值会被用来**拒绝导入**，误判会把一份正常配置挡在门外。
+-- 因此一律用「整份文档级标记 + 行首锚定」，宁可漏报，不可误报。
+function M.detect_all(content)
+	content = util.trim(content or "")
+	content = content:gsub("^\239\187\191", "")
+	local out = {}
+	if content == "" then return out end
+	local lower = content:lower()
+
+	-- .conf 的双条件与 detect() 一致
+	local wg_conf = lower:match("%[interface%]") and lower:match("privatekey%s*=")
+	if wg_conf then out[#out + 1] = "wireguard-conf" end
+
+	if content:match("^[%s]*proxies:") or content:match("^[%s]*outbounds:") then
+		out[#out + 1] = "yaml"
+	else
+		for line in content:gmatch("[^\r\n]+") do
+			if line:match("^%s*proxies:%s*$") or line:match("^%s*outbounds:%s*$") then
+				out[#out + 1] = "yaml"
+				break
+			end
+		end
+	end
+	if parser_surge.is_config(content) then out[#out + 1] = "surge" end
+	if count_uri_lines(content) > 0 then out[#out + 1] = "uri" end
+	-- JSON 排在最后：它的判据最宽（一份 JSON 配置里也可能出现 URI 行），
+	-- 放前面不影响结果，但排最后读起来与 detect() 的优先级一致。
+	if (has_json_object_line(content) or has_json_array_line(content)) and not wg_conf then
+		out[#out + 1] = "json"
+	end
+	return out
+end
+
 -- ---------- 协议解析 ----------
 local function parse_ss(body)
 	-- ss:// 兼容多种变体：base64(method:password@host:port)、method:password@host:port、
@@ -1511,7 +1603,20 @@ function M.parse_local(content, mode)
 		end
 		return { nodes = nodes, format = "local-form" }
 	end
-	-- 文本模式：使用通用解析
+	-- 文本模式：使用通用解析。
+	--
+	-- 但先挡住「一份文本里混了多种格式」：detect() 只认优先级最高的那一种，
+	-- 其余部分被静默丢弃，而 parse 返回的是合法表 —— 同步报成功，
+	-- 用户以为整份都导进来了（实测：「URI + WG conf」只剩 WG 节点，
+	-- 「URI + JSON」只剩 URI 节点，err 均为 nil）。
+	-- 一次只导入一种格式，混用就明确报错，而不是默默少一半节点。
+	local formats = M.detect_all(content)
+	if #formats > 1 then
+		local names = {}
+		for i, f in ipairs(formats) do names[i] = FORMAT_LABELS[f] or f end
+		return nil, "同一份文本里混用了多种格式（" .. table.concat(names, " + ") ..
+			"）：一次只能导入一种格式，请拆开后分次导入"
+	end
 	return M.parse(content)
 end
 

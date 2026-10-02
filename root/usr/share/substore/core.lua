@@ -7,7 +7,7 @@ local parser = require("substore.parser")
 
 local M = {}
 
-M.version = "2.6.15"
+M.version = "2.6.16"
 M.DATA_DIR = "/etc/substore"
 M.LIST_FILE = M.DATA_DIR .. "/subscriptions.json"
 M.NODES_DIR = M.DATA_DIR .. "/nodes"
@@ -281,8 +281,14 @@ function M.ensure_token(id)
 	local meta = items[id]
 	if not meta then return nil end
 	if not meta.token or meta.token == "" then
-		meta.token = util.rnd_hex(16)
-		save(seq, items)
+		local tok = util.rnd_hex(16)
+		meta.token = tok
+		-- 没落盘的 token 不能交出去：id_by_token 是从磁盘读的，交出去等于给用户
+		-- 一个必然报「无效的订阅 token」的链接；而且内存表用完即弃，
+		-- 下一次调用会再生成一个**不同**的 token，链接还会跳来跳去。
+		-- 失败就返回 nil，由调用方按「拿不到 token」处理。
+		if not save(seq, items) then return nil, "写入失败" end
+		return tok
 	end
 	return meta.token
 end
@@ -364,7 +370,12 @@ function M.remove(id)
 			end
 		end
 	end
-	save(seq, items)
+	-- 写盘失败必须中止。`items[id] = nil` 只改了内存里的表，磁盘上这条订阅还在：
+	-- 继续往下走会删掉它的节点文件，于是订阅「列表里还在、点进去却空了」，
+	-- 而调用方拿到 true，以为删成功了。
+	-- 组合的 sources 剪除同理：没落盘的改动不重算（重算只会从磁盘读回旧状态）。
+	local ok, serr = save(seq, items)
+	if not ok then return false, serr or "写入失败" end
 	os.remove(M.nodes_file(id))
 	-- 组合的物化节点在 nodes/<combo>.json，只有 combo_refresh 会重写它。
 	-- 不在这里重算的话，组合的下载链接会继续吐已删订阅的节点，一直等到别的源

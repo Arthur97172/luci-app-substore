@@ -187,8 +187,8 @@ msgstr "本地"
 msgid "Add node"
 msgstr "添加节点"
 
-msgid "Paste YAML/URI/JSON node list here. Mixed protocols supported."
-msgstr "在此粘贴 YAML/URI/JSON 节点列表，支持混合协议。"
+msgid "Paste a node list here — one format at a time (URI / Base64 / YAML / JSON / WireGuard .conf); protocols may be mixed within that format."
+msgstr "在此粘贴节点列表 —— 一次只支持一种格式（URI / Base64 / YAML / JSON / WireGuard .conf）；同一种格式内可混用协议。"
 
 msgid "Add nodes via form below. Each node will be saved as JSON and parsed on save."
 msgstr "在下方表单中添加节点，保存时将序列化为 JSON 并解析。"

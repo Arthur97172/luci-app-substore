@@ -607,6 +607,15 @@ function M.wget_proxy_env(proxy)
 end
 
 local function fetch_wget(url, parsed, opts)
+	-- 本机没有 DNS 解析能力时，check_public 只能 fail-open 放行，把校验推迟到
+	-- 「连接建立后复核对端地址」。curl 后端有 %{remote_ip} 可用（见 verify_peer_ip），
+	-- wget 后端**没有任何等价物**：拿不到对端地址，busybox wget 也没有可用的
+	-- 重定向拦截（重定向链只能事后从 -S 日志里看，拦不住已经发出去的请求）。
+	-- 于是在这条路径上，「预检放行」之后不存在任何一处校验 —— 等于没有 SSRF 防护。
+	-- 与 verify_peer_ip 的处置保持一致：校验不了就拒绝，而不是放行。
+	if opts.unverified then
+		return nil, "本机无 DNS 解析能力，wget 后端无法校验目标地址，已拒绝下载（安装 curl 后重试）"
+	end
 	local max, t = opts.max_size, opts.timeout
 	local proxy_env, perr = M.wget_proxy_env(opts.proxy)
 	if not proxy_env then return nil, perr end

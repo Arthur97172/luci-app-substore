@@ -65,10 +65,38 @@ local function fv(http, key)
 	return tostring(v)
 end
 
+-- post_ok 失败的原因，供调用方回显（§18：失败必须让用户看见）。
+-- 每个请求是一个独立的 Lua 进程，不存在跨请求残留；同一进程内多次调用时
+-- post_ok 成功会把它清空，因此不会把上一次的失败带进这一次。
+local post_fail_msg = nil
+
+-- POST 请求的 token 校验。
+--
+-- 上游 LuCI 渲染表单时，模板变量 `token` 就是 luci.dispatcher.context.authtoken
+-- （modules/luci-lua-runtime/luasrc/template.lua 的 viewns 元表：
+--    elseif key == "token" then return disp.context.authtoken），
+-- 所以「提交的 token == authtoken」正是框架自己那套判定，
+-- 不可能误拒合法表单 —— 合法表单提交的就是 authtoken。
+--
+-- 此前的判定是 `token ~= nil`：`token=`（空串）也能通过，等于没有校验。
+-- 取不到 authtoken 时（老版本 LuCI / 非标准上下文）退回原判定，
+-- 不能因为拿不到框架内部字段就把所有表单都拒掉。
 local function post_ok()
-	-- 拒绝缺失 CSRF token 的 POST
 	local http = require("luci.http")
-	return fv(http, "token") ~= nil
+	local tok = fv(http, "token")
+	if tok == nil then
+		post_fail_msg = "请求校验失败（缺少 token），请刷新页面后重试"
+		return false
+	end
+	local ok, authtoken = pcall(function()
+		return require("luci.dispatcher").context.authtoken
+	end)
+	if ok and type(authtoken) == "string" and authtoken ~= "" and tok ~= authtoken then
+		post_fail_msg = "请求校验失败（token 不匹配），请刷新页面后重试"
+		return false
+	end
+	post_fail_msg = nil
+	return true
 end
 
 -- read cron fields from form, validate cron expression, return cron_enable cron_time
@@ -161,7 +189,7 @@ function action_create()
 		if not id then return back_to_list(err or "创建订阅失败") end
 		core.write_cron()
 	end
-	back_to_list()
+	back_to_list(post_fail_msg)
 end
 
 function action_save()
@@ -195,7 +223,7 @@ function action_save()
 		if not ok then return back_to_list(err or "保存失败") end
 		core.write_cron()
 	end
-	back_to_list()
+	back_to_list(post_fail_msg)
 end
 
 function action_local_create()
@@ -220,7 +248,7 @@ function action_local_create()
 		})
 		if not id then return back_to_list(err or "创建本地订阅失败") end
 	end
-	back_to_list()
+	back_to_list(post_fail_msg)
 end
 
 function action_local_save()
@@ -252,7 +280,7 @@ function action_local_save()
 		local sok, serr = core.sync(id)
 		if not sok then return back_to_list(serr or "解析订阅内容失败") end
 	end
-	back_to_list()
+	back_to_list(post_fail_msg)
 end
 
 function action_delete()
@@ -282,6 +310,12 @@ function action_delete()
 		end
 		-- 部分失败也必须说：勾了 5 个只删掉 3 个却显示「成功」，
 		-- 用户不会再回头管剩下那 2 个。
+		--
+		-- 只要**有订阅真的被删掉**就要重写 cron —— 部分失败的分支也不例外：
+		-- 被删掉的订阅的 cron 行若留着，substore-cron.sh 会拿着已不存在的 id
+		-- 反复执行，每次都以非 0 退出（见脚本末尾的 FAILED 判断），
+		-- 在日志里刷失败、并让监控误报。
+		if removed > 0 then core.write_cron() end
 		if removed < #ids then
 			if removed == 0 then
 				return back_to_list(first_err or "删除失败：订阅不存在")
@@ -289,9 +323,8 @@ function action_delete()
 			return back_to_list(string.format("已删除 %d 个，另有 %d 个删除失败",
 				removed, #ids - removed))
 		end
-		core.write_cron()
 	end
-	back_to_list()
+	back_to_list(post_fail_msg)
 end
 
 -- 节点页返回链接：保留当前筛选参数
@@ -344,7 +377,7 @@ function action_node_save()
 		end
 		core.refresh_combos(id)
 	end
-	back_to_nodes(http)
+	back_to_nodes(http, post_fail_msg)
 end
 
 -- 节点删除：idx 支持单个（行内删除按钮）或逗号分隔多个（勾选批量删除）
@@ -384,7 +417,7 @@ function action_node_delete()
 		core.save_meta(id, { node_count = #nodes })
 		core.refresh_combos(id)
 	end
-	back_to_nodes(http)
+	back_to_nodes(http, post_fail_msg)
 end
 
 -- 单节点分组快速设置（XHR，JSON 响应）
@@ -451,7 +484,7 @@ function action_combo_save()
 		end
 		if not nid then return back_to_list(err or "保存组合订阅失败") end
 	end
-	back_to_list()
+	back_to_list(post_fail_msg)
 end
 
 function action_update()
@@ -478,7 +511,7 @@ function action_update()
 			core.save_meta(id, { error = tostring(err or "更新失败"), last_update = os.time() })
 		end
 	end
-	back_to_list()
+	back_to_list(post_fail_msg)
 end
 
 -- node probe endpoint: POST id + mode ping tcping url + proto + keyword, return JSON

@@ -216,13 +216,27 @@ check("multi delete rewrites cron once after removing both",
 
 -- 部分失败必须回显：勾了 3 个只删掉 1 个，不能显示成「成功」。
 -- 同样要数调用次数，否则改动前的实现也会「通过」。
+--
+-- 同时断言 cron 被重写：删掉的那 1 个订阅的 cron 行必须清掉，
+-- 否则 substore-cron.sh 会拿着已不存在的 id 反复失败（退出码非 0）。
 reset()
-local partial_calls = 0
+local partial_calls, partial_cron = 0, 0
 CORE.remove = function(id) partial_calls = partial_calls + 1; return id == "s00000001" end
+CORE.write_cron = function() partial_cron = partial_cron + 1 end
 FORM = { token = "t", id = "s00000001,s00000002,s00000003" }
 ctl.action_delete()
 check("partial delete attempts every id and reports error",
 	has_err() and partial_calls == 3)
+check("partial delete rewrites cron for the removed ones", partial_cron == 1)
+
+-- 全部失败：一个都没删掉 → 没有任何订阅的 cron 行需要清理，不重写
+reset()
+local none_cron = 0
+CORE.remove = function() return false, "订阅不存在" end
+CORE.write_cron = function() none_cron = none_cron + 1 end
+FORM = { token = "t", id = "s00000001,s00000002" }
+ctl.action_delete()
+check("all-failed delete does not rewrite cron", none_cron == 0)
 
 -- 全部失败：回显 core.remove 给出的原因
 reset()
@@ -315,6 +329,75 @@ CORE.read_nodes = function() return { { name = "a" }, { name = "b" } } end
 FORM = { token = "t", id = "s00000001", idx = "1" }
 ctl.action_node_delete()
 check("node_delete success has no err", not has_err())
+
+-- ---------- M28：CSRF token 必须真的校验 ----------
+-- 上游 LuCI 渲染表单时模板变量 `token` 就是 luci.dispatcher.context.authtoken
+-- （luci-lua-runtime/luasrc/template.lua 的 viewns 元表），
+-- 所以「提交的 token == authtoken」正是框架自己那套判定，不会误拒合法表单。
+-- 此前的判定是 `token ~= nil`：`token=`（空串）也能通过，等于没有校验。
+_G.luci.dispatcher.context = { authtoken = "secret" }
+
+-- 合法表单必须照常通过（这条是关键：改了校验不能把正常提交挡在门外）
+reset()
+local ok_calls = 0
+CORE.remove = function() ok_calls = ok_calls + 1; return true end
+FORM = { token = "secret", id = "s00000001" }
+ctl.action_delete()
+check("M28 valid token accepted", ok_calls == 1 and not has_err())
+
+-- 空串 token：此前被 `~= nil` 放过，现在必须拒绝
+reset()
+local empty_calls = 0
+CORE.remove = function() empty_calls = empty_calls + 1; return true end
+FORM = { token = "", id = "s00000001" }
+ctl.action_delete()
+check("M28 empty token rejected", empty_calls == 0)
+check("M28 empty token reports error", has_err())
+
+-- 不匹配的 token 同样拒绝
+reset()
+local bad_calls = 0
+CORE.remove = function() bad_calls = bad_calls + 1; return true end
+FORM = { token = "wrong", id = "s00000001" }
+ctl.action_delete()
+check("M28 mismatched token rejected", bad_calls == 0)
+check("M28 mismatched token reports error", has_err())
+
+-- 校验失败必须对所有动作生效（此前 9 个动作都是静默重定向）
+reset()
+local created = 0
+CORE.add = function() created = created + 1; return "s0000000a" end
+FORM = { token = "", name = "n", url = "http://e.com/s" }
+ctl.action_create()
+check("M28 create rejects empty token", created == 0 and has_err())
+
+reset()
+local updated = 0
+CORE.sync = function() updated = updated + 1; return true end
+FORM = { token = "wrong", id = "s00000001" }
+ctl.action_update()
+check("M28 update rejects bad token", updated == 0 and has_err())
+
+-- 节点页动作走 back_to_nodes，同样要带 err
+reset()
+local wrote = 0
+CORE.read_nodes = function() return { { name = "a" } } end
+CORE.write_nodes = function() wrote = wrote + 1; return true end
+FORM = { token = "", id = "s00000001", idx = "1", content = "[]" }
+ctl.action_node_save()
+check("M28 node_save rejects empty token",
+	wrote == 0 and LAST_REDIRECT:find("err=", 1, true) ~= nil)
+
+-- 取不到 authtoken（老版本 LuCI / 非标准上下文）时退回原判定，
+-- 不能因为拿不到框架内部字段就把所有表单都拒掉。
+_G.luci.dispatcher.context = nil
+reset()
+local legacy_calls = 0
+CORE.remove = function() legacy_calls = legacy_calls + 1; return true end
+FORM = { token = "t", id = "s00000001" }
+ctl.action_delete()
+check("M28 falls back when authtoken unavailable",
+	legacy_calls == 1 and not has_err())
 
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)

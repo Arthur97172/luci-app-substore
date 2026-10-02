@@ -2,6 +2,136 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.6.16-r1] - 安全与数据完整性：wget SSRF 缺口、token 校验、ACL、静默失败
+
+本轮按 `docs/LEGACY_ISSUES.md`「六」的处置优先级 1–8 实施。**每项都补了自包含回归
+测试，并对 `HEAD` 做了反向验证**（新断言在修复前失败、修复后全绿）—— 只证明「修复后
+测试通过」无法排除「这条断言本来就不会失败」。
+
+### 1. wget 后端的 SSRF 缺口（安全）
+
+`[2.6.12-r1]` 的「连接后复核对端地址」只对 **curl** 成立 —— 它靠 `%{remote_ip}`
+拿到真实对端 IP。**wget 后端没有任何等价物**：busybox wget 拿不到对端 IP，`-S` 日志
+里的重定向链也只能**事后**看。于是在「本机没有 DNS 解析手段」的设备上，预检
+（`check_public` 的 fail-open 放行）之后**不存在任何一处校验** —— 等于完全没有 SSRF
+防护，而这条路径此前是**静默**的。
+
+现按与 `verify_peer_ip` 相同的原则收敛：**校验不了就拒绝**。`fetch_wget` 在
+`opts.unverified` 为真时直接返回错误并提示安装 curl。
+
+影响面：仅「无任何解析手段 **且** 目标是域名 **且** 后端是 wget」的设备。字面 IP
+目标不受影响（`check_public` 对 IP 提前返回，不产生 `unverified`）。
+
+测试：`tests/dns_fallback_test.lua` 用例 H（含桩写入 `evilbody`，确保断言不是因
+「内容为空」而误过）与对照组 H2。反向验证：修复前 3 条断言失败。
+
+### 2. 删除订阅部分失败时漏写 cron
+
+`action_delete` 原先只在**全部删除成功**时调用 `core.write_cron()`，部分失败时直接
+返回、跳过了它。后果：被删订阅的 cron 行仍留在 crontab 里，`substore-cron.sh` 拿着
+已不存在的 id 反复执行、每次非 0 退出，在日志里刷失败并让监控误报。
+
+现改为**只要有订阅真的被删掉（`removed > 0`）就重写 cron**，与成功/失败分支无关。
+
+测试：`tests/controller_robustness_test.lua` 增加部分失败仍写 cron、全部失败不写 cron
+两条断言。反向验证：修复前 1 条断言失败。
+
+### 3. 混合格式文本导入不再静默丢一半
+
+本地粘贴的文本若混用多种格式，此前 `detect()` 只认优先级最高的一种，其余部分被
+**静默丢弃**，而 `parse` 返回的是合法表 —— 同步报成功，用户以为整份都导进来了
+（实测：「URI + WG conf」只剩 WG 节点，「URI + JSON」只剩 URI 节点，`err` 均为 `nil`）。
+
+新增 `M.detect_all()` 收集文本中**全部**出现的格式，本地文本导入在多于一种时
+**明确报错**并列出检出的格式。
+
+实施中修正了两处**会把合法配置拒之门外**的误判：INI 段头 `[Proxy]` 被误判为 JSON
+数组（加 `is_ini_section_head()` 排除）；「URI + JSON」方向漏检（补行级
+`has_json_object_line()`）。
+
+**刻意限定范围**：守卫只作用于本地文本导入，远程订阅路径（`M.detect` / `M.parse`）
+**未改动** —— 远程内容若混用格式仍是静默取一种，与修复前一致。
+
+测试：新增 `tests/parser_mixed_format_test.lua`（70 条断言）。反向验证：修复前探针
+显示「URI + WG conf」得到 `nodes=1, err=nil`。
+
+### 4. 写盘失败被静默吞掉
+
+`core.lua` 的 `save()` 返回 `util.atomic_write(...)` 的结果（失败时是 `false, err`），
+而 `M.remove` / `M.ensure_token` 此前**丢弃了返回值**：写盘失败时 `M.remove` 仍报成功
+（订阅文件已删、索引没更新 → 索引指向不存在的订阅）；`M.ensure_token` 会把一个
+**没有落盘**的 token 返回给调用方（页面显示 token，实际不存在）。现改为透传失败与原因。
+
+测试：`tests/data_integrity_test.lua` 用 `util.atomic_write` 猴补丁注入写失败。
+反向验证：修复前 5 条断言失败。
+
+### 5. 表单 token 校验：空 token 此前可通过（M28）
+
+`post_ok()` 只判 `formvalue("token") ~= nil`，**空串也通过**；且所有 `entry` 均未声明
+`post`，框架的 `test_post_security` 从未执行（已从上游 `luci/dispatcher.lua` 核实）。
+
+已从上游 `luci/template.lua` 核实：viewns 元表的 `token` 键返回
+`disp.context.authtoken` —— 模板里的 `token` **就是** `context.authtoken`，因此
+「提交的 token 与 `authtoken` 比对」正是框架自身的判据，**不会误拒任何合法表单**。
+
+现要求 token 存在且非空，并在能取到 `authtoken` 时要求相等；取不到时退回「非空即
+通过」（不因取不到值而拒绝全部请求）。失败原因通过 `post_fail_msg` 回显到列表页。
+同时补齐原先 **9 处忽略返回值**的调用点（7 处 `back_to_list()`、2 处
+`back_to_nodes()`），使校验失败**必然**被用户看到。
+
+测试：`tests/controller_robustness_test.lua` M28 段 6 条断言。反向验证：修复前 7 条失败。
+
+### 6. 新增 ACL：未授权的 LuCI 用户不再看到本应用（M29）
+
+此前本应用**没有任何 ACL** —— 没有 acl.d 文件、菜单也没有 `depends.acl`，任意能登录
+LuCI 的用户都能读写全部订阅（含凭据 URL 与下载 token）。
+
+新增 `root/usr/share/rpcd/acl.d/luci-app-substore.json` 定义 `luci-app-substore` 组
+（读写 `uci: substore`），`menu.d` 两个条目均声明 `depends.acl` 引用它，`Makefile`
+增加对应的安装规则。ACL 结构已对照上游 `luci-base` 与 `luci-app-commands` 核实。
+
+**执行范围（已从上游源码核实）**：这是**入口级**门禁，不只是「菜单里看不见」。
+ucode dispatcher（23.05+，现代目标机实际运行的那套）的 `build_pagetree()` 把 menu.d
+与 Lua 控制器装进**同一棵树**，`dispatch()` 逐段 `ctx_append` 累积路径上每个节点的
+`depends.acl`，ACL 不足即返回 **403 Forbidden** —— 直接访问 URL 同样被拦住。
+又因 ACL 沿路径累积，挂在父节点 `admin/services/substore` 上的 ACL 已覆盖其下全部
+18 个 `entry`（form / nodes / delete / save / update / probe …）。
+旧版 Lua dispatcher（≤ 22.03）行为不同：menu.d 的 `depends.acl` 只影响菜单渲染，
+入口级需另补 `entry.acl_depends`（本轮未做，理由见 LEGACY_ISSUES 1.2）。
+
+**未在设备上实测**（如实记录）：以上来自读上游源码，本机无 LuCI 运行环境。
+需按 `docs/TESTING.md` 第 9 项复核 —— 未授权用户既看不到菜单入口，直接访问 URL
+也应返回 403。
+
+回滚：删除 acl.d 文件（及 Makefile 中对应两行）并移除 `menu.d` 两个条目的 `depends` 块。
+
+测试：新增 `tests/acl_menu_test.lua`（19 条断言）固化跨文件接线 —— 接线上任何一环写错
+都**不会报错**，只会静默失效（ACL 形同虚设），故必须由测试锁住。反向验证：修复前
+13 条断言失败。
+
+### 7 / 8. 确认为已知限制并写入文档（无代码改动）
+
+- hysteria v1 导出 sing-box 需自行补 `up` / `down`（节点模型无带宽字段，补默认值属猜测）
+- hysteria v1 的 URI 只保证「本包导出 → 本包导入」不失真（上游规范站点持续 404）
+- `http` 协议不可手工新建（权威协议表不含它；可导入可导出）
+- AmneziaWG 参数在界面上是单个 JSON 文本框
+- wget 后端的体积与重定向检查是**请求发出之后**的（busybox wget 无
+  `--max-filesize` / `--max-redirect`；超限响应体被丢弃并报错、重定向链逐跳复检，
+  差别仅在于晚于请求发出；装 curl 可完全避免）
+- 无 DNS 解析能力的设备上 wget 后端拒绝域名订阅（见上文第 1 项）
+
+已写入 `README.md` / `README.en.md` 新增的「已知限制 / Known limitations」小节、
+`docs/SECURITY.md` 与 `docs/LEGACY_ISSUES.md`（逐项记录「为何不改」的依据）。
+
+### 文档
+
+- `docs/LEGACY_ISSUES.md`：1.2（M28/M29）、2.1、2.2、2.3、2.4、3.1、3.2、3.4、3.5
+  更新为已实施/已确认；新增「六、本轮实施记录」含逐项回归测试与反向验证结果
+- `docs/SECURITY.md`：新增「访问控制」小节、wget 后端处置、重定向逐跳复检、
+  更新「安全测试」为实际测试文件清单
+- `docs/TESTING.md`：新增 4 个测试文件行与 3 项集成验证（混合格式、部分删除 cron、ACL、token）
+- `README.md` / `README.en.md`：新增「已知限制」小节、安全小节更新、目录结构补 acl.d
+
 ## [2.6.15-r1] - 修复：删除订阅后引用它的组合订阅不重算
 
 ### 缺陷

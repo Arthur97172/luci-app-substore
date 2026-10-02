@@ -17,6 +17,8 @@
 --   E  连接时对端校验：curl 回报的 %{remote_ip} 为内网 → 拒绝并清理临时文件
 --   F  unverified 且拿不到对端 IP → 拒绝（「无法校验」不等于「放行」）
 --   G  走代理时不校验对端（%{remote_ip} 是代理地址，多半就在内网）
+--   H  unverified + wget 后端 → 拒绝，且不发起下载（wget 拿不到对端地址）
+--   H2 对照：有解析能力时 wget 后端照常工作
 --
 -- 全部用例不触网：nixio / nslookup / curl 一律用替身。
 
@@ -274,6 +276,61 @@ clear_tmp()
 http.download("http://1.1.1.1/sub", { proxy = "http://192.168.1.1:1080" })
 restore()
 check("G2 proxy flag passed to curl", saw_proxy == true)
+
+-- ---------- H：unverified + wget 后端 → 拒绝，且不发起下载 ----------
+-- curl 后端靠 %{remote_ip} 在连接后复核对端地址；wget 拿不到对端地址，
+-- busybox wget 也没有可用的重定向拦截。预检 fail-open 放行之后这条路径上
+-- 再无任何校验 —— 与 verify_peer_ip 同处置：校验不了就拒绝，而不是放行。
+-- 拒绝还必须发生在 wget **之前**：否则请求已经发出去，拒绝就只是事后补救。
+local WGET_TMP = "/tmp/substore_dl_wget_DNSTAGW.tmp"
+local execsH = {}
+util.rnd_hex = function() return "DNSTAGW" end
+util.try_require = function() return nil end
+os.execute = function(cmd)
+	execsH[#execsH + 1] = cmd
+	if cmd:find("command %-v wget") then return 0 end -- 有 wget
+	if cmd:find("command %-v") then return 1 end -- 没有 curl / nslookup → 无解析能力
+	-- 真正的下载命令：**照常落盘**，模拟一个成功的下载。
+	-- 不落盘的话，旧实现会因为「内容为空」而返回 nil，
+	-- 断言就在错误的理由上通过，测不出「本该拒绝却把内容交付了」。
+	local o = cmd:match("%-O '([^']+)'")
+	if o then touch(o, "evilbody") end
+	return 0
+end
+io.popen = function() return nil end
+os.remove(WGET_TMP)
+local bodyH, _, errH = http.download("http://example.com/sub")
+restore()
+check("H unverified wget rejected", bodyH == nil)
+check("H reason names the wget backend",
+	errH == "本机无 DNS 解析能力，wget 后端无法校验目标地址，已拒绝下载（安装 curl 后重试）")
+local ran_wget = false
+for _, c in ipairs(execsH) do
+	if c:find("%-O ", 1) then ran_wget = true end
+end
+check("H wget never invoked", ran_wget == false)
+check("H no temp file left", not exists(WGET_TMP))
+
+-- H2：对照 —— 有解析能力（unverified 为 nil）时 wget 后端照常下载，
+-- 证明 H 拒绝的是「无法校验」，不是把 wget 后端整个废掉。
+local WGET_TMP2 = "/tmp/substore_dl_wget_DNSTAGW2.tmp"
+local ran_wget2 = false
+util.rnd_hex = function() return "DNSTAGW2" end
+util.try_require = function() return nil end
+os.execute = function(cmd)
+	if cmd:find("command %-v curl") then return 1 end -- 没有 curl
+	if cmd:find("command %-v") then return 0 end -- 有 wget / nslookup
+	local o = cmd:match("%-O '([^']+)'")
+	if o then ran_wget2 = true; touch(o, "wgetbody") end
+	return 0
+end
+io.popen = function() return { read = function() return NS_PUBLIC end, close = function() end } end
+os.remove(WGET_TMP2)
+local bodyH2, _, errH2 = http.download("http://example.com/sub")
+restore()
+check("H2 resolved target via wget accepted", bodyH2 == "wgetbody" and errH2 == nil)
+check("H2 wget really ran", ran_wget2 == true)
+check("H2 no temp file left", not exists(WGET_TMP2))
 
 clear_tmp()
 print("")

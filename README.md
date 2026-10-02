@@ -72,18 +72,18 @@
 ## 安装
 
 > 包名中的版本号必须与 [Makefile](Makefile) 的 `PKG_VERSION` / `PKG_RELEASE` 保持一致
-> （当前 `2.6.15-r1`）。
+> （当前 `2.6.16-r1`）。
 
 opkg（OpenWrt / ImmortalWrt 24.10 及更早）：
 
 ```bash
-opkg install luci-app-substore-2.6.15-r1.ipk
+opkg install luci-app-substore-2.6.16-r1.ipk
 ```
 
 apk（OpenWrt / ImmortalWrt 25.12+）：
 
 ```bash
-apk add --allow-untrusted luci-app-substore-2.6.15-r1.apk
+apk add --allow-untrusted luci-app-substore-2.6.16-r1.apk
 ```
 
 然后在 LuCI 菜单打开：**服务 → 订阅**。
@@ -100,6 +100,33 @@ apk add --allow-untrusted luci-app-substore-2.6.15-r1.apk
 > **重命名规则的匹配语法是 Lua 模式，不是 PCRE**。`|` 表示「或」，但只在**顶层**
 > 生效：写成 `(a|b)` 不会展开成「a 或 b」，而是按字面匹配（要求名字里真的出现
 > `a|b`）。多分支直接写 `a|b`，或拆成多条规则。字符类 `[...]` 内的 `|` 同样是字面。
+
+## 已知限制
+
+以下均为**经代码级审计确认**的限制，是有意保留而非疏漏；每项「为何不改」的依据见
+[docs/LEGACY_ISSUES.md](docs/LEGACY_ISSUES.md)。
+
+- **混合格式文本导入会被拒绝** —— 本地粘贴的节点文本一次只能是一种格式
+  （URI / Base64 / YAML / JSON / WireGuard `.conf`），同一种格式内可混用协议。
+  混用会**明确报错**并列出检出的格式，而不是静默丢掉一部分节点。
+  **远程订阅不受此检查影响**：订阅内容若混用格式，仍按优先级取一种（与历史行为一致）。
+- **hysteria v1 导出到 sing-box 需自行补 `up` / `down`（带宽）** —— 本项目的节点模型
+  不承载带宽字段，凭空填默认值属于猜测，故不输出。
+- **hysteria v1 的 URI 只保证「本包导出 → 本包导入」不失真** —— 上游 URI 规范
+  （文档站点持续 404）未能核实，因此认不出的查询参数一律忽略，不臆造其语义。
+- **`http` 协议不能在界面上手工新建** —— 权威协议表不含它，故表单不提供该选项；
+  但它可由 Clash / JSON 配置导入，并能正常导出。
+- **AmneziaWG 参数在界面上是一个 JSON 文本框**（`amnezia-wg-option`）—— 数据往返
+  正确，但需手写 JSON。
+- **wget 后端的体积与重定向检查发生在「请求发出之后」** —— busybox wget 没有
+  `--max-filesize` / `--max-redirect` 的等价选项。超限响应体会被**丢弃并报错**
+  （不会进入解析流程），重定向链也会**逐跳复检**、任一跳指向内网即整体拒绝；
+  差别仅在于这两项检查晚于请求发出。**安装 curl 可完全避免**（curl 路径用
+  `--max-filesize` 与 `--max-redirs 0` 在发出前拦截）。
+- **本机完全没有 DNS 解析能力时，wget 后端会拒绝下载域名订阅** —— 这类设备上预检
+  无法校验目标地址，而 wget 又没有 curl 的 `%{remote_ip}` 可用于「连接后复核」，
+  按「校验不了就拒绝」处理（错误信息会提示安装 curl）。字面 IP 目标与有解析手段的
+  设备不受影响。
 
 ## 目录结构
 
@@ -118,6 +145,7 @@ apk add --allow-untrusted luci-app-substore-2.6.15-r1.apk
 │   │   │   └── view/substore/*.htm             # 模板
 │   │   └── share/
 │   │       ├── luci/menu.d/luci-app-substore.json
+│   │       ├── rpcd/acl.d/luci-app-substore.json  # ACL 组（菜单 depends.acl 引用）
 │   │       └── substore/*.lua    # 核心逻辑（不依赖 luci.*）
 ├── po/zh-cn/substore.po          # 简体中文翻译
 ├── docs/                         # 设计与指南
@@ -160,11 +188,23 @@ LuCI 界面与 cron 行为仍需在目标设备上验证 —— 见 [docs/TESTIN
 
 ## 安全
 
-SSRF 防护（拒绝内网 / 保留 / 链路本地地址；**DNS 解析失败即拒绝**，不给
-「解析不出来就放行」留绕过口）、协议白名单与端口范围校验（1–65535）、
-响应体大小与超时限制、下载临时文件在每条退出路径上清理（`/tmp` 是 tmpfs）、
-命令注入防护（白名单解析 + shell 引用 + 探测目标拒绝以 `-` 开头的主机名）、
+SSRF 防护（拒绝内网 / 保留 / 链路本地地址；**有解析手段却解析不出即拒绝**，不给
+「解析不出来就放行」留绕过口；重定向链**逐跳复检**）、协议白名单与端口范围校验
+（1–65535）、响应体大小与超时限制、下载临时文件在每条退出路径上清理（`/tmp` 是
+tmpfs）、命令注入防护（白名单解析 + shell 引用 + 探测目标拒绝以 `-` 开头的主机名）、
 公开下载端点基于 token 的访问控制、日志不含凭据。
+
+**无 DNS 解析能力的设备**（nixio 与 nslookup 均不可用）无法在下载前校验域名，
+此时 curl 后端改用 `%{remote_ip}` 在**连接建立后**复核实际对端地址（同时关闭
+DNS rebinding 的 TOCTOU 窗口）；wget 后端没有等价手段，**直接拒绝**而非放行
+（见「已知限制」）。
+
+**表单提交校验**：写操作要求 `token` 存在、非空，并在可取到时与 LuCI 的
+`context.authtoken` 比对（这正是框架模板里 `token` 的取值来源）；校验失败会**回显
+原因**，不会静默丢弃。**访问控制**：`luci-app-substore` ACL 组经 `menu.d` 的
+`depends.acl` 生效 —— 未获授权的 LuCI 用户看不到本应用入口，**直接访问 URL 也会
+被拒（403）**（依据：ucode dispatcher 在分发时校验路径上累积的 `depends.acl`，
+已从上游源码核实；未在设备上实测）。授权方式见 [docs/SECURITY.md](docs/SECURITY.md)。
 
 数据落盘权限：`/etc/substore` 目录 `0700`，`subscriptions.json` 与 `nodes/*.json`
 `0600`（前者含订阅 URL 与公开下载 token，后者含 uuid / 密码 / 私钥）——
