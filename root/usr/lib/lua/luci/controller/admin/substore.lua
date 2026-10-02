@@ -262,8 +262,33 @@ function action_delete()
 		-- §18：删除失败必须让用户看见。core.remove 对「非法 ID / 订阅不存在」
 		-- 返回 false（或 false, err），此前返回值被整个丢弃 —— 用户点了删除，
 		-- 页面正常跳回，订阅却还在，看起来像「删了但没生效」。
-		local ok, err = core.remove(fv(http, "id") or "")
-		if not ok then return back_to_list(err or "删除失败：订阅不存在") end
+		--
+		-- id 支持单个（行内删除按钮）或逗号分隔多个（勾选批量删除），
+		-- 与节点页 action_node_delete 的 idx 同一套约定。订阅 id 是 "s%08x"，
+		-- 不含逗号，切分不会切坏。
+		local ids = {}
+		for s in tostring(fv(http, "id") or ""):gmatch("[^,%s]+") do
+			ids[#ids + 1] = s
+		end
+		if #ids == 0 then return back_to_list("未指定要删除的订阅") end
+		local removed, first_err = 0, nil
+		for _, id in ipairs(ids) do
+			local ok, err = core.remove(id)
+			if ok then
+				removed = removed + 1
+			elseif not first_err then
+				first_err = err
+			end
+		end
+		-- 部分失败也必须说：勾了 5 个只删掉 3 个却显示「成功」，
+		-- 用户不会再回头管剩下那 2 个。
+		if removed < #ids then
+			if removed == 0 then
+				return back_to_list(first_err or "删除失败：订阅不存在")
+			end
+			return back_to_list(string.format("已删除 %d 个，另有 %d 个删除失败",
+				removed, #ids - removed))
+		end
 		core.write_cron()
 	end
 	back_to_list()

@@ -85,6 +85,13 @@ msgstr "暂无订阅"
 msgid "Delete this subscription?"
 msgstr "确定删除该订阅？"
 
+# 订阅页：勾选批量删除
+msgid "Delete selected subscriptions?"
+msgstr "确定删除选中的订阅？"
+
+msgid "Please select subscriptions first"
+msgstr "请先勾选订阅"
+
 # 订阅编辑表单
 msgid "Subscription URL"
 msgstr "订阅 URL"

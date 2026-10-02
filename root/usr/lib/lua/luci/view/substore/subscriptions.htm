@@ -22,10 +22,20 @@
 	<a class="cbi-button cbi-button-add" href="<%=luci.dispatcher.build_url('admin/services/substore/combo')%>">
 		<%:Add combination%>
 	</a>
+	<!-- 勾选批量删除。与节点页同一套交互：没勾选时点击不做任何删除（只提示）。 -->
+	<button type="button" class="cbi-button cbi-button-reset" onclick="substore_delete_selected()"><%:Delete%></button>
 </div>
+
+<!-- 批量删除用的隐藏表单：JS 把选中订阅的 id 收集到 id（逗号分隔）后提交。
+     必须放在表格**外面** —— 每一行里已经各有一个删除表单，HTML 不允许表单嵌套。 -->
+<form id="batch_delete_form" method="post" action="<%=luci.dispatcher.build_url('admin/services/substore/delete')%>" style="display:none">
+	<input type="hidden" name="token" value="<%=token%>"/>
+	<input type="hidden" name="id" value=""/>
+</form>
 
 <table class="cbi-section-table">
 	<tr class="cbi-section-table-titles">
+		<th style="width:1em"><input type="checkbox" onclick="substore_toggle_all(this)"/></th>
 		<th><%:Name%></th>
 		<th><%:URL%></th>
 		<th><%:Nodes%></th>
@@ -66,6 +76,7 @@
 		local fmt_disabled = (tonumber(it.node_count) or 0) <= 0
 %>
 	<tr class="cbi-section-table-row">
+		<td><input type="checkbox" class="sub-check" value="<%=luci.util.pcdata(it.id)%>"/></td>
 		<td>
 			<% if it.combo then %>
 			<span class="cbi-value-description" style="color:#0066aa">[<%:Combination%>]</span> <%=luci.util.pcdata(it.name or "")%>
@@ -149,7 +160,7 @@
 	if #items == 0 then
 %>
 	<tr class="cbi-section-table-row">
-		<td colspan="7" style="text-align:center;color:#808080"><%:No subscriptions yet.%></td>
+		<td colspan="8" style="text-align:center;color:#808080"><%:No subscriptions yet.%></td>
 	</tr>
 <%
 	end
@@ -164,6 +175,21 @@ function substore_setlink(sel, id) {
 	var base = sel.getAttribute('data-base') || '';
 	inp.value = base + encodeURIComponent(sel.value);
 	wrap.style.display = 'block';
+}
+function substore_toggle_all(el) {
+	var boxes = document.querySelectorAll('.sub-check');
+	for (var i = 0; i < boxes.length; i++) boxes[i].checked = el.checked;
+}
+function substore_delete_selected() {
+	var boxes = document.querySelectorAll('.sub-check:checked');
+	// 一个都没勾选时什么都不删（否则「删除」会变成「清空全部」）。
+	if (boxes.length === 0) { alert('<%:Please select subscriptions first%>'); return; }
+	if (!confirm('<%=luci.util.pcdata(luci.i18n.translate('Delete selected subscriptions?'))%>')) return;
+	var ids = [];
+	for (var i = 0; i < boxes.length; i++) ids.push(boxes[i].value);
+	var form = document.getElementById('batch_delete_form');
+	form.elements['id'].value = ids.join(',');
+	form.submit();
 }
 </script>
 <%+footer%>

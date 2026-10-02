@@ -180,6 +180,71 @@ FORM = { token = "t", id = "s00000001" }
 ctl.action_delete()
 check("delete success has no err", not has_err())
 
+-- ---------- 勾选批量删除：id 支持逗号分隔多个 ----------
+-- 行内删除按钮提交单个 id（上面两条覆盖）；表头的「删除」按钮把勾选的多个
+-- id 用逗号拼起来提交，走同一个 action —— 与节点页 action_node_delete 的
+-- idx 是同一套约定。
+reset()
+local seen_ids = {}
+CORE.remove = function(id) seen_ids[#seen_ids + 1] = id; return true end
+FORM = { token = "t", id = "s00000001,s00000002,s00000003" }
+ctl.action_delete()
+check("multi delete removes every id",
+	#seen_ids == 3 and seen_ids[1] == "s00000001" and seen_ids[3] == "s00000003")
+check("multi delete success has no err", not has_err())
+
+-- 逗号两侧的空格不影响切分（浏览器不会加空格，手工构造 / 复制粘贴会）
+reset()
+seen_ids = {}
+CORE.remove = function(id) seen_ids[#seen_ids + 1] = id; return true end
+FORM = { token = "t", id = " s00000001 , s00000002 " }
+ctl.action_delete()
+check("delete tolerates spaces around ids",
+	#seen_ids == 2 and seen_ids[1] == "s00000001" and seen_ids[2] == "s00000002")
+
+-- 批量删除成功后写一次 cron：删掉的订阅不能继续留在 /etc/cron.d/substore 里
+-- 断言里同时数 core.remove 的调用次数：只断言 write_cron 的话，改动前的实现
+-- （把整串 id 当成一个 id 传下去）也会通过 —— stub 对任何 id 都返回 true。
+reset()
+local cron_writes, rm_calls = 0, {}
+CORE.remove = function(id) rm_calls[#rm_calls + 1] = id; return true end
+CORE.write_cron = function() cron_writes = cron_writes + 1 end
+FORM = { token = "t", id = "s00000001,s00000002" }
+ctl.action_delete()
+check("multi delete rewrites cron once after removing both",
+	cron_writes == 1 and #rm_calls == 2)
+
+-- 部分失败必须回显：勾了 3 个只删掉 1 个，不能显示成「成功」。
+-- 同样要数调用次数，否则改动前的实现也会「通过」。
+reset()
+local partial_calls = 0
+CORE.remove = function(id) partial_calls = partial_calls + 1; return id == "s00000001" end
+FORM = { token = "t", id = "s00000001,s00000002,s00000003" }
+ctl.action_delete()
+check("partial delete attempts every id and reports error",
+	has_err() and partial_calls == 3)
+
+-- 全部失败：回显 core.remove 给出的原因
+reset()
+CORE.remove = function() return false, "订阅不存在" end
+FORM = { token = "t", id = "s00000001,s00000002" }
+ctl.action_delete()
+check("all-failed delete reports core reason", has_err())
+
+-- 一个可用 id 都没有：不能静默跳回（否则用户以为删了）
+reset()
+FORM = { token = "t", id = "  ,  " }
+ctl.action_delete()
+check("delete with no usable id reports error", has_err())
+
+-- 只有分隔符的 id 不得被当成「一个叫 ',' 的订阅」交给 core
+reset()
+local called = 0
+CORE.remove = function() called = called + 1; return true end
+FORM = { token = "t", id = ",,," }
+ctl.action_delete()
+check("delete does not pass empty ids to core", called == 0)
+
 -- action_combo_save：名称为空
 reset()
 FORM = { token = "t", name = "" }
