@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.1-r5] - 订阅列表页组合订阅行的「[组合]」徽标移到「订阅地址」列
+
+**纯模板改动，无 Lua 逻辑改动**（`core.lua` `M.version` 不变，仍为 2.7.1）。
+
+### 变更
+
+- `subscriptions.htm`：组合订阅行的 `[组合]` 徽标从**名称**列移到**订阅地址**列，
+  放在来源订阅列表之前。
+  - 名称列此前渲染成 `[组合]Test123`，现在只显示名称 `Test123`；
+  - 订阅地址列显示 `[组合] Fatiao + Feijiyundu`，与同一列里 `[本地]` 徽标的呈现
+    方式一致（徽标同为 `<span style="color:#0066aa">`，来源列表用灰色 `#808080`）；
+  - 徽标是**移走**而非复制 —— 全页仍只出现一次。
+
+### 测试
+
+- 新增 `tests/subscriptions_combo_row_test.lua`（20 项断言），真实渲染模板后断言：
+  - 组合行名称列只含名称，且不含 `Combination`、不含任何 `[`；
+  - `[组合]` 徽标在订阅地址列，且位置在来源列表之前；
+  - 徽标全页只出现一次（`count_of` 计数，另配一条非空对照断言）；
+  - 回归：普通订阅行（名称 / URL / 无徽标）与本地订阅行（`[本地]` 徽标）不受影响；
+  - 反面对照：`save_combo` 改名后名称列跟随数据变化，渲染结果确实随数据变化。
+- 覆盖缺口：本文件新增前，渲染 `subscriptions.htm` 的三个测试
+  （`subscriptions_format_gate_test` / `subscriptions_bulk_delete_test` /
+  `view_i18n_test`）fixture 全是普通订阅，**组合行与本地行的渲染此前零覆盖**。
+- 全量 Lua 测试 54 个文件与 `tests/cron_result_test.sh`（14 项）全部通过。
+
 ## [2.7.1-r4] - 修复英文界面下订阅表单仍显示中文（界面文本全部接入 i18n）
 
 **纯模板/翻译改动，无 Lua 逻辑改动**（`core.lua` `M.version` 不变，仍为 2.7.1）。
