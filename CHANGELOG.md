@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.1-r3] - 重写「重命名」提示并统一三个表单的规则说明
+
+**纯模板/翻译改动，无 Lua 逻辑改动**（`core.lua` `M.version` 不变，仍为 2.7.1）。
+
+### 变更
+
+- `form.htm` / `local_form.htm` / `combo.htm`：规则区的提示块此前三个模板各不相同
+  （`form.htm`、`combo.htm` 是硬编码中文，`local_form.htm` 是英文 msgid 但少了关键词
+  那一行），而且只列了三种写法的**形式**，没说清**作用范围**和**叠加顺序** ——
+  最常被问到的「怎么重命名多个节点」在提示里答不出来。现统一为同一份分点说明：
+  - 关键词用逗号分隔；包含 = 命中任一即保留，排除 = 命中任一即去除；
+  - 协议筛选全部不勾选 = 不筛选（保留所有协议）；
+  - 重命名每行一条，`#` 开头为注释，规则**自上而下逐条叠加**（不是首个命中即停）；
+  - 三种写法的**作用范围**不同：`旧名称=新名称` 精确匹配，只改名字完全相同的节点；
+    `模式 -> 替换` 正则替换，改所有节点名字中的匹配部分（Lua 模式而非 PCRE，捕获
+    引用写 `$1`）；`{server}_{port}_{proto}` 占位符模板**无条件**重命名所有节点；
+  - 列出全部可用占位符：`{server}` `{port}` `{proto}` `{name}` `{uuid}` `{password}` `{group}`。
+- 提示块三处改为完全相同的文案，只保留一份 msgid 集，避免以后改一处漏两处。
+
+### 修复
+
+- `local_form.htm` 的提示块原本缺「关键词用逗号分隔」那一行（另两个模板有），
+  现三个模板一致。
+- `form.htm` / `combo.htm` 的提示块原为硬编码中文：英文界面下会原样显示中文，
+  现统一走 `<%:…%>` i18n（`p2_batch7_test.lua` L1 断言覆盖）。
+
+### 翻译
+
+- `po/zh-cn/substore.po`：新增 6 条 msgid 的中文译文；删除已废弃的
+  `One rename rule per line: OLD=NEW (exact), …`。
+
+### 测试
+
+- 全量 Lua 测试 50 个文件与 `tests/cron_result_test.sh` 全部通过。
+- 模板改动后仍可被 `template_escape_test.lua` 重建并 `loadstring` 通过。
+
 ## [2.7.1-r2] - 修复 Argon 主题下「协议筛选」复选框压住「重命名」输入框
 
 **纯模板/样式修复，无 Lua 逻辑改动**（`core.lua` `M.version` 不变，仍为 2.7.1）。
