@@ -27,6 +27,7 @@
 | `subscriptions_bulk_delete_test.lua` | 订阅列表页勾选批量删除：选择框列 / 全选 / 删除按钮 / 空选不删（真实渲染模板后断言） |
 | `user_agent_test.lua` | 订阅客户端类型（User-Agent）：取值校验、`-A`/`-U` 进入命令行、重定向每一跳带 UA、预设解析、core 透传、控制器接线 |
 | `core_combo_test.lua` | 组合订阅：合并/重算、来源校验、**删除源订阅后组合立刻重算**（节点/下载链接/来源剪除/来源删光的报错/无关组合不受影响） |
+| `view_i18n_test.lua` | 视图模板界面文本的 i18n：**用恒等 translate 真实渲染模板，输出不得含中文**（复现「英文界面显示中文」）+ 每个 msgid 都有 zh-cn 译文 + 静态扫描模板字面 HTML 里的硬编码中文 |
 
 运行全部：`for f in tests/*.lua; do lua5.1 "$f" || exit 1; done`
 

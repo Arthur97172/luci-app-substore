@@ -87,7 +87,7 @@
 			<%=luci.util.pcdata(it.name or "")%>
 			<% end %>
 			<% if it.cron_enable == true or it.cron_enable == "1" then %>
-			<div class="cbi-value-description">定时: <%=luci.util.pcdata(it.cron_time or "")%></div>
+			<div class="cbi-value-description"><%:Schedule:%> <%=luci.util.pcdata(it.cron_time or "")%></div>
 			<% end %>
 		</td>
 		<td class="cbi-value-description" style="word-break:break-all"><%
