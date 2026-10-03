@@ -72,9 +72,10 @@
 			<div class="cbi-section-descr" style="margin:0.25em 0">
 				<label style="display:inline-block;min-width:10em;vertical-align:top">协议筛选</label>
 				<% for _, p in ipairs(core.RULE_PROTOS) do %>
-				<label style="margin-right:0.75em;white-space:nowrap">
-					<input type="checkbox" name="proto_filter_<%=p%>" value="1" <%=proto_sel[p] and "checked" or ""%>/> <%=p%>
-				</label>
+				<span style="white-space:nowrap;margin-right:0.75em">
+					<input type="checkbox" id="pf_<%=p%>" name="proto_filter_<%=p%>" value="1" style="vertical-align:text-top;margin:0" <%=proto_sel[p] and "checked" or ""%>/>
+					<label for="pf_<%=p%>"><%=p%></label>
+				</span>
 				<% end %>
 			</div>
 			<div class="cbi-section-descr" style="margin:0.25em 0">

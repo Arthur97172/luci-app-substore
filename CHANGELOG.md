@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.1-r2] - 修复 Argon 主题下「协议筛选」复选框压住「重命名」输入框
+
+**纯模板/样式修复，无 Lua 逻辑改动**（`core.lua` `M.version` 不变，仍为 2.7.1）。
+
+### 修复
+
+- `form.htm` / `local_form.htm` / `combo.htm`：「协议筛选」的协议复选框原先嵌在
+  `<label>` 内。Argon 主题有一条
+  `label > input[type="checkbox"] { position: relative; top: 0.4rem }`，
+  把复选框**视觉**下移 0.4rem（6.4px）却不改变布局占位；而该行与下一行
+  （「重命名」）之间只有 `margin:0.25em`（该处 `font-size:small` → ≈3.25px），
+  复选框于是探出所在行、盖住「重命名」输入框。原生 bootstrap 主题的
+  `label > input[type="checkbox"]` 只有 `vertical-align: text-top; margin: 0`，
+  没有位移，故仅在 Argon 下复现。
+- 改法：用 `<span style="white-space:nowrap">` 分组 + `for`/`id` 关联，让 `input`
+  不再是 `label` 的子元素，从而不匹配该选择器；`<span>` 上的 `white-space:nowrap`
+  保留原有的「复选框与协议名不被折行拆散」行为。
+- 复选框显式补回 `vertical-align:text-top;margin:0`：移出 `label` 后不再命中主题
+  的 `label > input[type="checkbox"]` 规则，若不声明，浏览器 UA 样式会给复选框
+  加上约 3px 外边距并改用基线对齐，尺寸与对齐会与修复前不一致。
+
+### 测试
+
+- `tests/rules_fields_test.lua`：新增静态断言 —— 三个模板的协议复选框块不得出现
+  `<label …><input`，且必须带 `id="pf_*"` / `for="pf_*"` 关联。
+
 ## [2.7.1-r1] - 许可证升级为 GPL-3.0-or-later，维护者邮箱更换
 
 **纯元数据变更，无代码改动**（`core.lua` 仅同步版本号）。
