@@ -25,6 +25,7 @@ local TYPE_MAP = {
 	wireguard = "wireguard",
 	ssr = "ssr",
 	http = "http",
+	anytls = "anytls",
 }
 
 -- 导出供 parser.lua 的简易 YAML 兜底解析复用（单一事实来源）

@@ -641,6 +641,68 @@ crontab 里，`substore-cron.sh` 会拿着已不存在的 id 反复执行，每�
 
 ---
 
+# 七、2.7.2 审计新发现（**待决策**，均未修复）
+
+本节是给 AnyTLS + Reality 支持做代码级审计时**顺带确认**的问题，全部**不在**
+本次改动范围内（本次只新增协议支持与 i18n/打包调整），因此原样保留、记录在此。
+每条都给出**实测探针或上游文档依据**，无推测项。
+
+| # | 问题 | 位置 | 依据 | 影响 |
+|---|---|---|---|---|
+| 7.1 | Surge 格式会为 VLESS 节点生成代理行，而 Surge 的协议清单里没有 VLESS | `output_formats.surge_config` | Surge 手册（`manual.nssurge.com`）协议清单无 VLESS；探针见下 | Surge 遇到无法解析的代理行会**拒绝加载整份配置** → 含 vless 的订阅导出成 Surge 后整份不可用 |
+| 7.2 | Egern 格式输出的是 Surge 逗号行，而 Egern 的配置是 YAML | `output_formats.to_egern` | `egernapp.com/docs/configuration/proxies/`；探针见下 | 选 Egern 格式导出的内容 Egern 读不了 |
+| 7.3 | QX 的 vmess / vless 用 `tls-host=` + `tls-verification=true` 表示 TLS，官方 `sample.conf` 用 `obfs=over-tls` / `obfs=wss` + `obfs-host` | `output_formats.qx_tls` | `crossutility/Quantumult-X` 的 `sample.conf`；探针见下 | 见 7.3 的详细说明 —— **会让新加的 QX vmess/vless Reality 公钥不生效** |
+| 7.4 | Loon / Surfboard 的 trojan / vmess / vless 凭据在官方文档里是**位置参数**，本生成器一律写具名参数（只有 anytls 按 flavor 分对了） | `output_formats.surge_line` | `nsloon.app/docs/Node/` 的示例行 | Loon 是否同时接受具名写法**无文档依据**，待核实；若不接受则这几类节点导出到 Loon 后连不上 |
+| 7.5 | `parser_surge` 的行拆分不是引号感知的（`rest:gmatch("[^,]+")`） | `parser_surge.lua:35`、`:119` | 代码级：位置参数里含逗号的值会被切断 | 别人给的 Loon / QX 配置里带逗号的密码被**静默截断**（生成端已有「含逗号就整条丢弃」的防护，解析端没有对应防护） |
+| 7.6 | Loon 的 `transport=ws` 未映射到 `net` | `parser_surge.lua:97`、`:155` | 只认 `ws=true`（Surge 旧写法）与 `obfs=ws`（QX）；`nsloon.app/docs/Node/` 用 `transport=ws` + `path=` + `host=` | Loon 的 ws 节点导入后 `net=tcp`，`path` / `host` 全丢 → 导出到任何格式都按 tcp 连，握手失败**且不报错** |
+| 7.7 | 后端模块仍有约 103 处硬编码中文错误串（`return nil, "…"`） | `core.lua` 26 / `http.lua` 26 / `parser.lua` 36 / `util.lua` 13 / `output_wireguard_conf.lua` 2 | `grep -c 'return nil, ".*[^ -~]'` | 控制器文案已接入 i18n，但这些来自后端的失败原因经 `?err=` **原样**显示，英文界面下仍是中文 |
+| 7.8 | `root/usr/share/substore/age.lua` 与 `tests/age_test.lua` 未被 git 跟踪，且 `age.lua` 未被任何模块 `require` | 仓库根 | `grep -rn require` 无引用 | 未随包发布；留在工作区会被后续审计反复重新评估 |
+
+## 7.1 / 7.2 / 7.3 的实测探针
+
+```
+$ lua5.1 -e '... out.generate({vless节点}, "surge", {name="P"}) ...'
+[Proxy]
+V = vless, 1.2.3.4, 443, username=u, tls=true        ← Surge 协议清单里没有 vless
+
+$ lua5.1 -e '... out.generate({vmess节点}, "egern", {name="P"}) ...'
+[Proxy]
+M = vmess, 1.2.3.4, 443, username=u, tls=true        ← Egern 的配置是 YAML，不是逗号行
+
+$ lua5.1 -e '... out.generate({vmess+reality节点}, "qx", {name="P"}) ...'
+[server_local]
+vmess=1.2.3.4:443, method=none, password=u, tls-host=s.example.com,
+tls-verification=true, reality-base64-pubkey=PBK, reality-hex-shortid=SID, tag=R
+```
+
+## 7.3 详细说明（唯一一条会影响本次新功能的）
+
+`sample.conf` 的说明原文（`crossutility/Quantumult-X` 仓库，`[server_local]` 前）：
+
+> …if the corresponding line (socks5: `over-tls=true`, http: `over-tls=true`,
+> trojan: `over-tls=true` or `obfs=wss`, anytls: `over-tls=true`, … vmess:
+> `obfs=over-tls` or `obfs=wss`, vless: `obfs=over-tls` or `obfs=wss`) contains
+> the `reality-base64-pubkey` param, then the standard TLS will be replaced with
+> the Reality.
+
+即：QX 里 vmess / vless 的「TLS 标志」写作 `obfs=over-tls`（或 `obfs=wss`），
+trojan / anytls 才写 `over-tls=true`。而 `qx_tls()` 对所有协议统一输出
+`tls-host=` + `tls-verification=true`（探针第三段可见）—— 于是 vmess / vless 的
+`reality-base64-pubkey` **很可能被 QX 忽略**，节点退回普通 TLS。
+
+本次**没有**改 `qx_tls()`：它是既有实现，改动会让**所有** QX vmess / vless TLS
+节点的输出形态变化（不只是 Reality 节点），需要单独决策与回归；而且
+`tls-host` / `tls-verification` 在 QX 里是否对 vmess / vless 同样有效**没有找到
+官方依据**（`sample.conf` 里只用 `obfs=` 形式，但「未出现」不等于「无效」）。
+本次只保证：**只要 TLS 标志生效，公钥就已经写在那行上了**（`qx_reality()` 覆盖
+vmess / vless / trojan / anytls 四类，与 `sample.conf` 的 Reality 条目一致）。
+
+**处置候选**：A. 维持现状 + 本节记录；B. `qx_tls()` 按协议分叉（vmess / vless 走
+`obfs=over-tls` + `obfs-host`，trojan / anytls 维持现状），需要同步更新
+`parser_surge.parse_qx_line` 的读取端与 `tests/protocol_registry_test.lua`。
+
+---
+
 # 附：P2 修复范围（不含本文件所列项）
 
 P2 为审计表中**其余中危 / 低危**项中性质明确、无需另行决策的缺陷，例如

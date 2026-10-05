@@ -64,12 +64,19 @@ jobs:
       - name: Build package
         run: |
           cd sdk
-          make -j"$(nproc)" package/luci-app-substore/compile V=s
+          # 简体中文翻译是独立包（luci.mk 按 po/zh_Hans/ 自动生成），必须单独编译，
+          # 否则 Release 里只有主包、中文界面会回退成英文。两个目标一起给，
+          # 主包的编译依赖也顺带满足。
+          make -j"$(nproc)" \
+            package/luci-app-substore/compile \
+            package/luci-i18n-substore-zh-cn/compile V=s
 
       - name: Collect artifact
         run: |
           mkdir -p artifacts
-          find sdk/bin/ -name "luci-app-substore*.${{ matrix.pkg_ext }}" -exec cp {} artifacts/ \;
+          # 主包 + 简体中文翻译包（luci-i18n-substore-zh-cn_<版本>_all.<ext>）
+          find sdk/bin/ \( -name "luci-app-substore*.${{ matrix.pkg_ext }}" \
+            -o -name "luci-i18n-substore*.${{ matrix.pkg_ext }}" \) -exec cp {} artifacts/ \;
           ls -lh artifacts/ 2>/dev/null || echo "(no ${{ matrix.pkg_ext }})"
 
       - name: Upload artifact
@@ -141,6 +148,7 @@ jobs:
             - `.ipk`（opkg）— OpenWrt/ImmortalWrt 24.10 及更早
             - `.apk`（apk）— OpenWrt/ImmortalWrt 25.12+
             - 架构 `all`：纯 Lua 包，同一份产物同时支持 ARM / x86 / MIPS 等所有平台
+            - `luci-i18n-substore-zh-cn`：简体中文翻译包（可选安装；不装则界面为英文）
           files: artifacts/*
           token: ${{ github.token }}
           make_latest: true

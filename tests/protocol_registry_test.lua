@@ -48,6 +48,7 @@ local SAMPLES = {
 	tuic        = { uuid = "u", password = "p" },
 	wireguard   = { ["private-key"] = "k", ["public-key"] = "k2", ip = "10.0.0.2/32" },
 	socks       = { username = "u", password = "p" },
+	anytls      = { password = "p" },
 }
 
 -- 分享链接的 scheme。URI 类格式（shadowrocket / v2rayuri）会把节点名编码进
@@ -58,6 +59,7 @@ local SCHEME = {
 	shadowsocks = "ss://", ssr = "ssr://", hysteria2 = "hysteria2://",
 	hysteria = "hysteria://", tuic = "tuic://", wireguard = "wireguard://",
 	socks = "socks5://",
+	anytls = "anytls://",
 }
 local URI_FORMATS = { shadowrocket = true, v2rayuri = true }
 
@@ -96,6 +98,14 @@ local DROPPED = {
 		surfboard = "同 Surge", surgemac = "同 Surge", loon = "同 Surge", egern = "同 Surge",
 		qx = "to_qx 无 wireguard", v2ray = "V2RAY_PROTOS 无 wireguard" },
 	socks       = { qx = "to_qx 无 socks", wgconf = "wgconf 只收 wireguard" },
+	-- anytls：mihomo / Stash / sing-box 1.12+ / Shadowrocket / Surge 家族
+	-- （Surge iOS 5.17.0+ 与 Mac 6.4.3+、Surfboard、Loon、Egern）以及
+	-- QX 1.6.0+ 都支持；原版 Clash（Dreamacro）与 Xray/V2Ray 都不认识该协议
+	-- （Xray issue #4428 以 not planned 关闭），wgconf 只收 wireguard。
+	anytls      = {
+		clash = "原版 Clash 无 anytls", v2ray = "V2RAY_PROTOS 无 anytls",
+		wgconf = "wgconf 只收 wireguard",
+	},
 }
 
 -- ---------- 表本身的自洽性（防止错别字 / 过期条目把测试变成空转） ----------

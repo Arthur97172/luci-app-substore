@@ -8,6 +8,9 @@ local M = {}
 
 M.PROTOS = {
 	"vmess", "vless", "trojan", "shadowsocks", "ssr", "hysteria2", "tuic", "hysteria", "wireguard", "socks",
+	-- anytls 追加在末尾：清单顺序即界面下拉/复选框顺序，插在中间会改动既有
+	-- 界面的排列（无功能影响，但会让每次 diff 都动到无关行）。
+	"anytls",
 }
 
 -- 每种协议在「表单导入 / 节点编辑」界面里渲染的字段集合，数组顺序即界面顺序。
@@ -30,7 +33,11 @@ M.PROTO_FIELDS = {
 	-- security，vmess 的加密方式存于 cipher。表单渲染 tls 时读不到 security，
 	-- 保存即丢 TLS。
 	vmess = { "server", "port", "uuid", "alterId", "cipher", "net", "headerType", "path", "host", "sni", "security", "udp", "skip-cert-verify" },
-	vless = { "server", "port", "uuid", "security", "flow", "net", "headerType", "path", "host", "sni", "udp", "skip-cert-verify" },
+	vless = { "server", "port", "uuid", "security", "flow", "net", "headerType", "path", "host", "sni", "udp", "skip-cert-verify",
+		-- Reality（security=reality）参数。public-key 缺失时客户端根本连不上；
+		-- 表单不渲染这几项的话，用户在界面上编辑一次就把 Reality 参数清空
+		-- （core.merge_form_node 把「在清单里但没提交」的字段当作清空处理）。
+		"public-key", "short-id", "spider-x", "fp" },
 	trojan = { "server", "port", "password", "sni", "net", "headerType", "path", "host", "udp", "skip-cert-verify" },
 	-- plugin：SIP003 插件串（`obfs-local;obfs=http;obfs-host=x`）。不进这个清单
 	-- 会有两个后果：表单不渲染它，且 core.merge_form_node 会在保存时把原值清掉
@@ -41,6 +48,23 @@ M.PROTO_FIELDS = {
 	-- 字段集合以各输出模块实际消费的键为准（output_clash_meta / output_singbox / output_uri）。
 	hysteria = { "server", "port", "password", "sni", "obfs", "skip-cert-verify" },
 	tuic = { "server", "port", "uuid", "password", "sni", "udp", "skip-cert-verify" },
+	-- anytls：字段集合以各输出实际消费的键为准。mihomo 的 AnyTLSOption 里是
+	-- password / sni / alpn / skip-cert-verify（**注意是 sni，没有 servername**）；
+	-- sing-box 是 password + tls{server_name, alpn, insecure}；Surge 是 password
+	-- 加共享 TLS 参数。三者交集即下面这几项。
+	-- client-fingerprint 故意不列入：它只在 mihomo 侧有意义，而「不在清单里的
+	-- 字段」在表单保存时会被原样保留（只有清单内的字段才会被清空），
+	-- 所以不列入既不影响导入的节点，也少一个只对单一客户端生效的输入框。
+	--
+	-- Reality：AnyTLS 同样能跑在 Reality 上（Loon 的节点行有 AnyTLS 的 Reality
+	-- 示例、QX 1.6+ 的 anytls 行认 reality-base64-pubkey、sing-box 1.12+ 的 anytls
+	-- 出站 tls 里也能带 reality），public-key 缺失时客户端根本连不上。而
+	-- core.merge_form_node 会把「在清单里但没提交」的字段当作清空处理 ——
+	-- 不列入的话，用户在界面上编辑一次就把这两个凭据抹掉。
+	-- spider-x 不列入：没有任何 anytls 输出端消费它（Loon 只写 public-key /
+	-- short-id，QX 与 sing-box 的 Reality 也没有 spiderX 这个参数）。
+	anytls = { "server", "port", "password", "sni", "alpn", "skip-cert-verify",
+		"public-key", "short-id" },
 	wireguard = { "server", "port", "private-key", "public-key", "pre-shared-key", "ip", "ipv6", "allowed-ips", "reserved", "persistent-keepalive", "listen-port", "mtu", "amnezia-wg-option" },
 	socks = { "server", "port", "username", "password", "udp" },
 }
@@ -62,6 +86,29 @@ M.TLS_ONLY = {
 	hysteria2 = true,
 	hysteria = true,
 	tuic = true,
+	-- anytls 同样建立在 TLS 之上，协议本身没有明文模式：mihomo 的 AnyTLSOption
+	-- 根本没有 tls 开关，sing-box 的 anytls 出站把 tls 标为 Required，Surge
+	-- 文档写明 "AnyTLS always encrypts traffic with TLS"。
+	-- 缺 security 时 output_singbox.build_tls 返回 nil，sni / insecure 全丢，
+	-- 客户端直接起不来 —— 与 hysteria2/tuic 是同一个不变量。
+	anytls = true,
+}
+
+-- 支持 Reality 的协议。Reality 的凭据是 public-key（对端公钥，Base64）＋
+-- short-id（十六进制），两者都从服务端配置里抄来。
+--
+-- 判据必须是「协议 + 有没有 public-key」两者，只看 public-key 会误伤 wireguard：
+-- wireguard 的 public-key 是「对端公钥」，与 Reality 毫无关系，一旦被当成 Reality，
+-- security 会被写成 "reality"，output_singbox 就会去读 tls.reality，wireguard
+-- 节点的 TLS 无关字段整批丢失。
+--
+-- 协议清单取自各客户端文档：Loon 的 Reality 示例覆盖 VLESS / VMess / Trojan /
+-- AnyTLS（nsloon.app/docs/Node/），mihomo 的 reality-opts 也出现在这几类出站上。
+M.REALITY_PROTOS = {
+	vless = true,
+	vmess = true,
+	trojan = true,
+	anytls = true,
 }
 
 -- 支持 uTLS 客户端指纹（mihomo 的 client-fingerprint）的协议。
@@ -155,6 +202,17 @@ function M.normalize(node)
 		elseif node.tls == "tls" or node.tls == "reality" then
 			node.security = node.tls
 		end
+	end
+
+	-- Reality：带 public-key 就是 Reality，与 security 是怎么写的无关 ——
+	-- 分享链接写 security=reality，Clash / Loon 的行则写 public-key 而 security
+	-- 仍是 tls 或 none（Loon 的 Reality 行就是 over-tls=true + public-key）。
+	-- 统一在这里推导，各解析器与各输出模块就不必各判一次，也不会出现
+	-- 「同一个节点在 clash 里出了 reality-opts、在 v2ray 里却被当成普通 TLS」
+	-- 这种按格式分叉的漏判。
+	-- 必须排在 TLS_ONLY 补的 security="tls" 之后，否则 anytls 会被改回 tls。
+	if node["public-key"] and M.REALITY_PROTOS[node.proto] then
+		node.security = "reality"
 	end
 
 	-- vmess 的加密方式存于 cipher，与 TLS 层（security）无关；
