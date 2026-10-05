@@ -29,12 +29,53 @@ local function unquote(v)
 	return inner or v
 end
 
+-- 按逗号切分字段，但**引号内的逗号不作为分隔符**。
+--
+-- Loon 把凭据写成双引号包裹的位置参数（nsloon.app/docs/Node/）：
+--   Trojan = Trojan,trojan.example.com,443,"password",transport=tcp,...
+-- 密码里含逗号时，`rest:gmatch("[^,]+")` 会把它切成两段 ——
+--   Trojan = Trojan,h,443,"pa,ss",sni=x
+-- 的密码会静默变成 `"pa`（连引号一起、少掉后半段），用户拿到的不是他填的凭据，
+-- 而且没有任何提示。生成端早就有「值里含逗号就整条丢弃」的防护（output_formats
+-- 的 surge_line），解析端此前没有对应处理。
+--
+-- 两条边界：
+--   * 引号个数为奇数时（订阅内容不可信，可能是落单的引号）**不做引号感知**，
+--     退回按逗号切分。否则那个引号会一直「开着」，把后面的 sni= / over-tls=
+--     全吞进同一个字段，比按逗号切更糟。
+--   * 只跟踪引号开合，不做转义处理 —— Surge / Loon / QX 的行语法里都没有转义
+--     机制（Loon 文档只把引号列为位置参数的写法，未提及任何转义序列）。
+--
+-- 无引号的输入与旧的 `gmatch("[^,]+")` 逐字符等价：都按逗号切、都丢弃空字段、
+-- 都对每段做 trim（旧的 `[^,]+` 会保留纯空白段，trim 后成空串，这里同样保留）。
+local function split_fields(s)
+	local nquote = 0
+	for _ in s:gmatch('"') do nquote = nquote + 1 end
+	if nquote % 2 == 1 then
+		local out = {}
+		for part in s:gmatch("[^,]+") do out[#out + 1] = util.trim(part) end
+		return out
+	end
+	local out, buf, quoted = {}, {}, false
+	for i = 1, #s do
+		local c = s:sub(i, i)
+		if c == '"' then
+			quoted = not quoted
+			buf[#buf + 1] = c
+		elseif c == "," and not quoted then
+			if #buf > 0 then out[#out + 1] = util.trim(table.concat(buf)) end
+			buf = {}
+		else
+			buf[#buf + 1] = c
+		end
+	end
+	if #buf > 0 then out[#out + 1] = util.trim(table.concat(buf)) end
+	return out
+end
+
 -- 解析 Surge 风格行：Name = proto, server, port, k=v, ...
 local function parse_surge_line(name, rest)
-	local parts = {}
-	for part in rest:gmatch("[^,]+") do
-		parts[#parts + 1] = util.trim(part)
-	end
+	local parts = split_fields(rest)
 	if #parts < 3 then return nil end
 
 	local proto = map_proto(parts[1])
@@ -50,8 +91,8 @@ local function parse_surge_line(name, rest)
 	--   VMess        = VMess,vmess.example.com,443,aes-128-gcm,"52396e06-...",transport=...
 	-- 此前只认具名参数，Loon 配置导入后 uuid / password 全丢，节点因缺凭据被
 	-- 下游静默丢弃。位置参数只收集「不含 = 的字段」，具名行完全不受影响。
-	-- （已知限制：按逗号切分时不做引号感知，`"user,name"` 这种引号内含逗号的
-	--   位置参数会被切成两段 —— 属既有行为，本次不改动。）
+	-- 切分走 split_fields：引号内的逗号不再被当作分隔符，`"pa,ss"` 这种位置
+	-- 参数能原样保留（见该函数的说明）。
 	local kv, pos = {}, {}
 	for i = 4, #parts do
 		local k, v = parts[i]:match("^([%w%-]+)%s*=%s*(.*)$")
@@ -99,6 +140,21 @@ local function parse_surge_line(name, rest)
 	if kv["ws-headers"] and kv["ws-headers"]:match("^Host:") then
 		data.host = kv["ws-headers"]:match("^Host:%s*(.*)$")
 	end
+	-- Loon 的传输写法是 transport=<tcp|ws|http> + path= + host=
+	-- （nsloon.app/docs/Node/ 的示例行），与 Surge 家族的 net= / ws=true /
+	-- ws-path / ws-headers=Host: 是同一组语义的两代写法 —— Loon 文档明说
+	-- 「旧参数 ws=true、ws-path、ws-headers=Host:域名 分别对应 transport=ws、
+	-- path、host」，即旧写法只是兼容别名。只认旧写法时，别人给的 Loon 配置
+	-- 导入后 net 保持默认 tcp、path / host 全丢，导出到任何格式都按 tcp 去连一个
+	-- 只开了 ws 的端口 —— 握手失败且不报错。
+	-- transport=http 按同一段文档「兼容配置中的 transport=http 会按 WebSocket
+	-- 处理」同样落成 ws。
+	-- 放在 ws=true / ws-path / ws-headers 之后：同一行两种写法都出现时以新写法为准。
+	if kv.transport then
+		data.net = (kv.transport == "http") and "ws" or kv.transport
+	end
+	if kv.path then data.path = kv.path end
+	if kv.host then data.host = kv.host end
 	if kv.sni then data.sni = kv.sni end
 	-- Surge 家族写 tls=true，Loon 写 over-tls=true，两种都是「启用 TLS」
 	if kv.tls and kv.tls ~= "false" and kv.tls ~= "none" then data.security = "tls" end
@@ -115,10 +171,7 @@ end
 local function parse_qx_line(content)
 	local proto, rest = content:match("^([%w_]+)%s*=%s*(.+)$")
 	if not proto then return nil end
-	local parts = {}
-	for part in rest:gmatch("[^,]+") do
-		parts[#parts + 1] = util.trim(part)
-	end
+	local parts = split_fields(rest)
 	if #parts < 1 then return nil end
 
 	local hostport = parts[1]

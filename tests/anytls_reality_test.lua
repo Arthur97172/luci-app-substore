@@ -8,8 +8,11 @@
 --   2. node.normalize 据 public-key 推导 security=reality，且**不能**误伤
 --      wireguard（它的 public-key 是对端公钥，与 Reality 无关）；
 --   3. 每个输出格式按各自客户端的文档写出 Reality 参数 —— 支持的要写全，
---      不支持的（Surge 家族、Xray、原版 Clash）一个都不能写：
---      Surge 遇到解析不了的代理行会拒绝加载**整份**配置。
+--      不支持的（Surge 家族、Xray、原版 Clash）一个都不能写：这些客户端的
+--      协议清单里根本没有对应参数，写过去只会是客户端读不懂的噪声。
+--      （早期注释写的「Surge 会拒绝加载整份配置」**未经官方证实** ——
+--       官方只说明过无法识别的 *section* 会原样保留且不报错；判据是
+--       「不写客户端读不懂的东西」，见 output_formats.lua 的 REALITY_FLAVORS。）
 --
 -- 逐条依据见各处注释引用的官方文档 / 客户端源码。
 

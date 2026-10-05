@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.2-r2] - 修复 Surge 系 / Loon / QX 行解析的字段级缺陷（LEGACY_ISSUES 7.5 / 7.6）
+
+`docs/LEGACY_ISSUES.md` 第七节 2.7.2 审计新发现的**第一轮**修复。两项都在
+`parser_surge.lua`，即「导入别人的 Loon / Surge / QX 配置」这条路径上。
+
+### 修复 — 行拆分改为引号感知（7.5）
+
+Loon 把凭据写成双引号包裹的位置参数（`nsloon.app/docs/Node/`）：
+
+```
+Trojan = Trojan,trojan.example.com,443,"password",transport=tcp,...
+```
+
+密码里含逗号时，旧的 `rest:gmatch("[^,]+")` 会把它切成两段 ——
+`"pa,ss"` 静默变成 `"pa`（多一个引号、少掉后半段），用户拿到的不是他填的凭据，
+而且没有任何提示。生成端早就有「值里含逗号就整条丢弃」的防护
+（`output_formats.surge_line`），解析端此前没有对应处理。
+
+新增 `split_fields()`，`parse_surge_line` 与 `parse_qx_line` 的切分都改走它：
+
+- **引号个数为奇数时不做引号感知**，退回旧的按逗号切分。订阅内容不可信，落单的
+  引号若被当成「开引号」，会把后面的 `sni=` / `over-tls=` 全吞进同一个字段，
+  比按逗号切更糟。
+- 偶数时按引号开合切分，引号内的逗号不再是分隔符；引号本身保留在字段里，
+  由既有的 `unquote()`（Loon 位置参数）或原样（QX 的 kv 值）处理。
+- **无引号的输入与旧实现逐字符等价**：同样按逗号切、同样丢弃空字段、同样 trim。
+
+### 修复 — Loon 的 transport= / path= / host= 未映射（7.6）
+
+Loon 文档的传输写法是 `transport=<tcp|ws|http>` + `path=` + `host=`，旧参数
+`ws=true` / `ws-path` / `ws-headers=Host:` 只是兼容别名（`nsloon.app/docs/Node/`）。
+此前只认旧写法，于是别人给的 Loon ws 节点导入后 `net` 保持默认 `tcp`、
+`path` / `host` 全丢 —— 导出到任何格式都按 tcp 去连一个只开了 ws 的端口，
+**握手失败且不报错**。
+
+`parse_surge_line` 增加这三个映射（`transport=http` 按 Loon 文档「会按 WebSocket
+处理」落成 `ws`），放在旧写法之后：同一行两种写法都出现时**以新写法为准**。
+
+### 测试
+
+新增 `tests/parser_surge_fields_test.lua`（36 条断言）：两个缺陷的修复点、旧写法
+回归、无引号输入的逐字符等价、空字段边界、奇数引号边界、「新写法优先」，
+以及 Reality 参数不受影响的回归。
+
+**反向验证**：把 `parser_surge.lua` stash 掉后跑该文件得到 **12 条 FAIL**，症状与
+预测完全一致（被截断的凭据、`net=tcp`、`path` / `host` 为 nil、旧写法胜出）；
+恢复后 0 条 FAIL。全套 58 个文件、0 失败。
+
+### 文档 / 构建
+
+- **更正未经证实的结论**：`output_formats.lua`、`tests/anytls_reality_test.lua`
+  与 `LEGACY_ISSUES.md` 里写的「Surge 遇到无法解析的代理行会拒绝加载整份配置」
+  **没有官方依据** —— Surge 官方只说明过无法识别的 *section* 会原样保留且不报错。
+  相关注释改为「不输出客户端读不懂的东西」，与本仓库丢弃 wireguard / ssr 同一约定。
+- **CI 修复**：编译前写入 `CONFIG_LUCI_LANG_zh_Hans=y` 再 `make defconfig`。
+  `luci-i18n-substore-zh-cn` 是 HIDDEN 包（无 Kconfig prompt），luci.mk 给它的
+  唯一默认值是 `LUCI_LANG_zh_Hans||(ALL&&m)`，而 SDK 默认 `ALL=n` —— 不显式打开
+  这个符号，翻译包就不会被编译出来，`Collect artifact` 的守卫会失败。
+  （`CONFIG_PACKAGE_luci-i18n-substore-zh-cn=m` 对无 prompt 的符号是空操作。）
+- `docs/BUILD.md`：更正不存在的 `make package/luci-i18n-substore-zh-cn/compile`
+  目标（make 目标按**目录**生成），补上语言符号的说明。
+
 ## [2.7.2-r1] - 新增 AnyTLS 与 Reality 支持；控制器文案接入 i18n；简体中文翻译拆成独立包
 
 `core.lua` `M.version` 由 2.7.1 升至 2.7.2。本节包含 2.7.1-r5 之后未发布的两批

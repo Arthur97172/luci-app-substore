@@ -59,25 +59,33 @@ jobs:
           sed -e 's/^src-git-full /src-git /' feeds.conf.default > feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+          # 打开简体中文语言符号，否则 luci-i18n-substore-zh-cn 不会被编译出来。
+          # 该翻译包是 HIDDEN 包（feeds/luci/luci.mk 的 LuciTranslation 里 HIDDEN:=1），
+          # HIDDEN 包在 Kconfig 里没有 prompt（scripts/package-metadata.pl），
+          # 于是 luci.mk 给它的唯一默认值 LUCI_LANG_zh_Hans||(ALL&&m) 成为唯一入口；
+          # SDK 默认配置里 ALL=n，所以必须显式打开这个符号。
+          # 注意 CONFIG_PACKAGE_luci-i18n-substore-zh-cn=m 对无 prompt 的符号是空操作
+          # （Kconfig 只对 visible 的符号采用用户值），真正生效的是下面这行。
+          # 必须在 make defconfig 之前写入：defconfig 会保留这个已可见符号的用户值。
+          echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
           make defconfig
 
       - name: Build package
         run: |
           cd sdk
-          # 简体中文翻译是独立包（luci.mk 按 po/zh_Hans/ 自动生成），必须单独编译，
-          # 否则 Release 里只有主包、中文界面会回退成英文。两个目标一起给，
-          # 主包的编译依赖也顺带满足。
-          make -j"$(nproc)" \
-            package/luci-app-substore/compile \
-            package/luci-i18n-substore-zh-cn/compile V=s
+          # i18n 子包与该目录同属一个 builddir，会一并编译。
+          # 注意不存在 package/luci-i18n-substore-zh-cn/compile 这个目标。
+          make -j"$(nproc)" package/luci-app-substore/compile V=s
 
       - name: Collect artifact
         run: |
           mkdir -p artifacts
-          # 主包 + 简体中文翻译包（luci-i18n-substore-zh-cn_<版本>_all.<ext>）
-          find sdk/bin/ \( -name "luci-app-substore*.${{ matrix.pkg_ext }}" \
-            -o -name "luci-i18n-substore*.${{ matrix.pkg_ext }}" \) -exec cp {} artifacts/ \;
-          ls -lh artifacts/ 2>/dev/null || echo "(no ${{ matrix.pkg_ext }})"
+          find sdk/bin/packages -type f -name "luci-*substore*.${{ matrix.pkg_ext }}" -exec cp {} artifacts/ \;
+          # 不能用 test -s artifacts/*：多个产物时 glob 展开成多参数，test 会报 binary operator expected
+          [ -n "$(ls -A artifacts 2>/dev/null)" ] || { echo "No artifact found!"; exit 1; }
+          # 翻译包缺失说明 i18n 子包没被编译出来，直接失败以便尽早发现
+          ls artifacts/ | grep -q "luci-i18n-substore" || { echo "i18n package missing!"; exit 1; }
+          ls -lh artifacts/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

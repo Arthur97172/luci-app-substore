@@ -22,7 +22,12 @@ end
 -- server-cert-verify-name / server-cert-fingerprint-sha256 / client-cert，
 -- 没有任何公钥参数；Surfboard 的 AnyTLS 文档同样只有 password / skip-cert-verify /
 -- sni / server-cert-fingerprint-sha256 / reuse。给它们写 public-key 是「写了客户端
--- 不认识的参数」，Surge 遇到无法解析的代理行会拒绝加载整份配置。
+-- 不认识的参数」，节点必然连不上，那个参数对客户端也只是噪声。
+-- 注意：Surge 对「不认识的代理行 / 参数」的处置**没有官方依据** —— 官方只说明过
+-- 无法识别的 *section* 会原样保留且不报错，代理行的情况未提及（本仓库早期的注释
+-- 与 LEGACY_ISSUES 里写的「会拒绝加载整份配置」未经证实，已按此更正）。
+-- 所以这里的判据是「不写客户端读不懂的东西」，与本文件丢弃 wireguard / ssr 同一约定，
+-- 不依赖任何未经证实的「整份配置会被拒绝」前提。
 -- Egern 确实有 Reality，但它的写法是 YAML 里的 reality 对象
 -- （egernapp.com/docs/configuration/proxies/），与本文件输出的逗号行对不上。
 local REALITY_FLAVORS = { loon = true }
@@ -161,7 +166,8 @@ function M.surge_line(n, flavor)
 		end
 	else
 		-- 未知协议：以前会一路掉到这里，生成 `Name = snell, host, port` 这样的残行。
-		-- 客户端解析到不认识的类型不是丢掉这一个节点，而是拒绝加载整份配置。
+		-- 客户端遇到不认识的类型，这一个节点必然不可用（是跳过该节点还是拒绝加载
+		-- 整份配置，各家均未获官方证实），没有理由把它输出出去。
 		-- 返回 nil 由调用方整条剔除，与下面「值里含逗号」同一约定。
 		return nil
 	end
@@ -197,8 +203,9 @@ end
 -- 两类名字必须排除，否则生成的配置整体非法：
 --   * 含逗号：这些格式的成员列表就是 `NAME = select, X, Y, DIRECT`，语法里没有
 --     引号 / 转义机制，名字里的逗号会被当成成员分隔符 —— `A,B` 被读成两个成员
---     `A` 与 `B`，两个都不存在，Surge / QX 会因引用不存在的代理而拒绝加载整份
---     配置。节点定义本身仍留在 [Proxy] / [server_local] 中，只是不进成员列表。
+--     `A` 与 `B`，两个都不存在（客户端的处置未获官方证实，但引用不存在的代理
+--     无论如何都不是用户想要的结果）。节点定义本身仍留在 [Proxy] /
+--     [server_local] 中，只是不进成员列表。
 --   * 换行：定义行经过 util.one_line（换行→空格），成员列表若用原始名就对不上
 --     定义行，同样成为悬空引用。这里统一先 one_line 再比对，保证两边一致。
 local function names_of(nodes)
@@ -235,8 +242,7 @@ local function surge_config(nodes, group_name, supports_ssr, flavor)
 	local out = {}
 	out[#out + 1] = "[Proxy]"
 	-- surge_line 对「值里含逗号」这类无法表达的节点返回 nil，这些节点必须
-	-- 同时从成员列表里剔除 —— 否则 [Proxy Group] 会引用一个不存在的代理，
-	-- Surge 直接拒绝加载整份配置。
+	-- 同时从成员列表里剔除 —— 否则 [Proxy Group] 会引用一个不存在的代理。
 	local rendered = {}
 	for _, n in ipairs(list) do
 		local line = M.surge_line(n, flavor)
