@@ -763,6 +763,8 @@ trojan 页同样写 `username=` / `password=`。所以 Surge / Surfboard / Surge
 
 ## 7.1 / 7.2 / 7.3 的实测探针
 
+**修复前**（`[2.7.2-r2]` 及更早）：
+
 ```
 $ lua5.1 -e '... out.generate({vless节点}, "surge", {name="P"}) ...'
 [Proxy]
@@ -776,6 +778,32 @@ $ lua5.1 -e '... out.generate({vmess+reality节点}, "qx", {name="P"}) ...'
 [server_local]
 vmess=1.2.3.4:443, method=none, password=u, tls-host=s.example.com,
 tls-verification=true, reality-base64-pubkey=PBK, reality-hex-shortid=SID, tag=R
+```
+
+**修复后**（`[2.7.2-r3]`，7.1 与 7.3 已实施；7.2 未实施，第三轮）：
+
+```
+$ ... out.generate({vless节点}, "surge", {name="P"}) ...
+[Proxy]
+
+[Proxy Group]
+P = select, DIRECT
+       ↑ [Proxy] 段为空：节点被 FAMILY_CAPS 整体丢弃（连成员列表也不引用它）
+
+$ ... out.generate({vmess节点}, "egern", {name="P"}) ...
+[Proxy]
+M = vmess, 1.2.3.4, 443, username=u, tls=true        ← 仍是逗号行：7.2 未实施
+
+$ ... out.generate({vmess+reality节点}, "qx", {name="P"}) ...
+[server_local]
+vmess=1.2.3.4:443, method=none, password=u, obfs=over-tls, obfs-host=s.example.com, reality-base64-pubkey=PBK, reality-hex-shortid=SID, tag=R
+                                             ↑ 7.3-C：QX 只认这个形式的 TLS 标志
+                                               （此前写的是 tls-host= + tls-verification=）
+
+$ ... out.generate({vmess+reality节点}, "loon", {name="P"}) ...
+[Proxy]
+R = vmess, 1.2.3.4, 443, auto, "u", tls=true, sni=s.example.com, public-key="PBK", short-id=SID
+                            ↑ 7.4-A：位置参数「加密方式, "UUID"」  ↑ 公钥按文档加双引号
 ```
 
 ## 7.3 详细说明（唯一一条会影响本次新功能的）
