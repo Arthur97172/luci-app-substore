@@ -2,6 +2,10 @@
 -- luci-app-substore
 
 local util = require("substore.util")
+-- node.lua 只 require util，不反向依赖任何输出模块，因此这里不会形成循环依赖。
+-- 需要它是因为「哪些协议支持 uTLS 客户端指纹」必须只有一个来源（见
+-- node.CLIENT_FP_PROTOS 的说明），在输出模块里另抄一份必然漂移。
+local node_model = require("substore.node")
 
 local M = {}
 
@@ -261,8 +265,14 @@ local function format_node(node, name)
 			lines[#lines + 1] = "      - " .. esc_yaml(v)
 		end
 	end
-	if node.fp then
-		lines[#lines + 1] = "    fp: " .. esc_yaml(node.fp)
+	-- uTLS 客户端指纹。键名是 client-fingerprint，**不是** fp —— 详见
+	-- node.CLIENT_FP_PROTOS 的说明：mihomo 全仓库没有任何结构体声明
+	-- `proxy:"fp,..."`，而它的解码器对未知键静默忽略，所以旧的 `fp:` 既不报错
+	-- 也不生效（配置看起来有指纹，实际用默认指纹）。
+	-- 同时只对真正支持 uTLS 的协议输出：hysteria / hysteria2 / tuic 上的
+	-- `fingerprint` 是证书固定（SHA256 pin），语义不同，不能拿 fp 顶上。
+	if node.fp and node_model.supports_client_fp(node.proto) then
+		lines[#lines + 1] = "    client-fingerprint: " .. esc_yaml(node.fp)
 	end
 
 	-- 协议特定字段

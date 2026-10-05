@@ -48,21 +48,61 @@ M.PROTO_FIELDS = {
 -- 表单里与协议无关、始终渲染的字段（nodeform.js 的 nodeTemplate 固定输出这三个）
 M.FORM_ALWAYS_FIELDS = { "name", "group" }
 
+-- TLS-only 协议：协议本身要求 TLS 层，缺了客户端直接起不来
+-- （sing-box 的 hysteria2/tuic 出站在 TLS 缺失或未启用时返回 C.ErrTLSRequired）。
+-- 这是协议自身的约束，属于归一化该保证的不变量，不能依赖各解析器自己补：
+-- URI 解析器会补 security="tls"，但 Clash YAML / sing-box JSON 导入的同名节点
+-- 没有这个字段，导出后是一份客户端起不来的配置。
+--
+-- 单独抽成一张表，是因为 DEFAULTS（下面）与测试（tests/view_injection_test.lua）
+-- 都要用它。两边各写一份必然漂移：新增一个 TLS-only 协议时只改一处，
+-- 另一处会静默失效 —— 测试从此不再覆盖新协议。
+M.TLS_ONLY = {
+	trojan = true,
+	hysteria2 = true,
+	hysteria = true,
+	tuic = true,
+}
+
+-- 支持 uTLS 客户端指纹（mihomo 的 client-fingerprint）的协议。
+--
+-- 键名与语义都已对照上游源码确认（MetaCubeX/mihomo，adapter/outbound/*.go）：
+--   * vmess / vless / trojan / shadowsocks / anytls 的选项结构体里是
+--     `ClientFingerprint string \`proxy:"client-fingerprint,omitempty"\``，即 uTLS 指纹；
+--   * hysteria / hysteria2 / tuic 上叫 `fingerprint`，但那是**证书固定**
+--     （SHA256 pin），与 uTLS 是两回事，把 fp 写过去是语义错误；
+--   * 全仓库没有任何结构体声明 `proxy:"fp,..."`。旧输出写的 `fp:` 键在 mihomo
+--     里根本不存在，而它的 proxy 解码器对未知键是**静默忽略**的
+--     （common/structure/structure.go：多余的键留在 dataValKeysUnused 里，没有
+--     `,remain` 字段就再也不检查、不报错），于是这个错误不报错、不生效 ——
+--     用户拿到的配置看起来「有指纹」，实际握手用的是默认指纹。
+--
+-- 抽成一张表而不是在各输出模块里各写一遍 if 链：新增协议（如 anytls）时只改
+-- 一处，遗漏由 tests/protocol_registry_test.lua 直接暴露。
+M.CLIENT_FP_PROTOS = {
+	vmess = true,
+	vless = true,
+	trojan = true,
+	shadowsocks = true,
+	anytls = true,
+}
+
+-- 协议是否支持 uTLS 客户端指纹。兼容 ss 等别名写法（未归一化的节点直接进来
+-- 时 proto 可能是 "ss"），归一化规则与 M.normalize 保持一致。
+function M.supports_client_fp(proto)
+	if proto == "ss" then proto = "shadowsocks" end
+	return M.CLIENT_FP_PROTOS[proto] == true
+end
+
 -- 协议默认值，用于补全缺省字段
 local DEFAULTS = {
 	vmess = { net = "tcp", security = "none" },
 	vless = { net = "tcp", security = "none" },
-	trojan = { security = "tls" },
-	-- hysteria2 / hysteria / tuic 在 sing-box 与 mihomo 里都是 TLS-only：
-	-- sing-box 的 hysteria2/tuic 出站在 TLS 缺失或未启用时直接返回 C.ErrTLSRequired
-	-- 拒绝启动。URI 解析器（parser.lua）本来就会补 security="tls"，但 Clash YAML
-	-- 与 sing-box JSON 导入的 hysteria2/tuic 节点没有这个字段，导出后是一份客户端
-	-- 起不来的配置。TLS-only 是协议本身的约束，属于归一化该保证的不变量，
-	-- 与 trojan 同理。
-	hysteria2 = { security = "tls" },
-	hysteria = { security = "tls" },
-	tuic = { security = "tls" },
 }
+-- TLS-only 协议的默认 security 由 M.TLS_ONLY 推导，不在这里另列一遍
+for proto in pairs(M.TLS_ONLY) do
+	DEFAULTS[proto] = { security = "tls" }
+end
 
 -- vmess 加密方式（cipher）白名单。sing-box 的 vmess.security、Xray 的
 -- users[].security、Clash 的 vmess.cipher 取同一组值；写入非法值会让客户端
