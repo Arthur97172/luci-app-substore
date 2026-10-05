@@ -14,9 +14,11 @@
 --       官方只说明过无法识别的 *section* 会原样保留且不报错；判据是
 --       「不写客户端读不懂的东西」，见 output_formats.lua 的 REALITY_FLAVORS。）
 --   4. 客户端的**协议清单**差异（不只是参数差异）：VLESS 在 Surge / Surfboard /
---      SurgeMac 的清单里根本没有，SSR 在 Egern 的清单里没有 —— 这些格式下
---      整个节点被丢弃（FAMILY_CAPS），不是「保留节点只丢参数」。Loon 的凭据
---      写法是带引号的位置参数、QX 的 vmess/vless Reality 用 obfs= 形式的 TLS 标志。
+--      SurgeMac 的清单里根本没有（FAMILY_CAPS），SSR 在 Egern 的清单里没有
+--      （output_egern.lua 的 EGERN_KEY）—— 这些格式下整个节点被丢弃，
+--      不是「保留节点只丢参数」。Loon 的凭据写法是带引号的位置参数、
+--      QX 的 vmess/vless Reality 用 obfs= 形式的 TLS 标志、Egern 是 YAML 里的
+--      reality 对象（public_key / short_id，snake_case）。
 --
 -- 逐条依据见各处注释引用的官方文档 / 客户端源码。
 
@@ -326,7 +328,7 @@ check("qx reality vless round-trips public-key", qx_rtn ~= nil and qx_rtn["publi
 check("qx reality vless round-trips security", qx_rtn ~= nil and qx_rtn.security == "reality")
 
 -- --- Surge 家族：只有 Loon 的节点行文档化了 Reality（public-key / short-id）。
--- Surge / SurgeMac / Surfboard / Egern 写 public-key 是「客户端不认识的参数」。
+-- Surge / SurgeMac / Surfboard 写 public-key 是「客户端不认识的参数」。
 -- 判据是「不写客户端读不懂的东西」，与本文件丢弃 wireguard / ssr 同一约定 ——
 -- 不依赖「Surge 会拒绝加载整份配置」这个**未经官方证实**的前提（官方只说明过
 -- 无法识别的 *section* 会原样保留且不报错，代理行的情况未提及）。
@@ -370,8 +372,16 @@ check("surge vmess reality params dropped",
 	not has(gen(VMESS, "surge"), "public-key") and not has(gen(VMESS, "surge"), "short-id"))
 check("surfboard trojan reality params dropped",
 	not has(gen(TROJAN, "surfboard"), "public-key"))
-check("egern anytls named password, no reality",
-	has(gen(ANY, "egern"), "password=p") and not has(gen(ANY, "egern"), "public-key"))
+-- Egern 的配置是 YAML（output_egern.lua），不是 Surge 的逗号行：字段名是
+-- snake_case 的 `password:`，Reality 是节点里的 reality 子对象，键名
+-- public_key / short_id（既不是统一模型的 public-key / short-id，也不是
+-- Clash 的 reality-opts）—— 官方示例 egernapp.com/docs/configuration/example/。
+local eg_any = gen(ANY, "egern")
+check("egern anytls YAML password", has(eg_any, "password: p"))
+check("egern anytls reality public_key/short_id",
+	has(eg_any, "public_key: PBK") and has(eg_any, "short_id: SID"))
+check("egern anytls reality is nested under a reality key",
+	has(eg_any, "reality:") and not has(eg_any, "reality-opts"))
 
 -- ============ 5. 表单字段清单 ============
 -- core.merge_form_node 会把「在 PROTO_FIELDS 里但表单没提交」的字段当作清空处理。

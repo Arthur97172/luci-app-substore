@@ -1,4 +1,5 @@
--- output_formats.lua — Surge 系 / Loon / QX / Egern / Stash / Plain JSON 输出（纯 Lua）
+-- output_formats.lua — Surge 系 / Loon / QX / Stash / Plain JSON 输出（纯 Lua）
+-- （Egern 不在这里：它的配置是 YAML，见 output_egern.lua）
 -- luci-app-substore
 
 local util = require("substore.util")
@@ -46,8 +47,8 @@ local LOON_VMESS_CIPHER = {
 -- 与 LEGACY_ISSUES 里写的「会拒绝加载整份配置」未经证实，已按此更正）。
 -- 所以这里的判据是「不写客户端读不懂的东西」，与本文件丢弃 wireguard / ssr 同一约定，
 -- 不依赖任何未经证实的「整份配置会被拒绝」前提。
--- Egern 确实有 Reality，但它的写法是 YAML 里的 reality 对象
--- （egernapp.com/docs/configuration/proxies/），与本文件输出的逗号行对不上。
+-- Egern 确实有 Reality，但它的写法是 YAML 里的 reality 对象，与本文件输出的逗号行
+-- 对不上 —— 那部分由 output_egern.lua 实现（7.2 已实施）。
 local REALITY_FLAVORS = { loon = true }
 
 -- 各 Surge 系客户端对「非通用协议」的支持情况。
@@ -65,16 +66,18 @@ local REALITY_FLAVORS = { loon = true }
 --     —— 没有 VLESS，也没有 ShadowsocksR。
 --   * Surfboard：getsurfboard.com 的 external-proxy 清单同样没有 VLESS / SSR。
 --   * Loon：nsloon.app/docs/Node/ 有独立的 VLESS 与 ShadowsocksR 两节，都支持。
---   * Egern：egernapp.com/docs/configuration/proxies/ 有 vless，没有 ssr。
+--
+-- Egern **不在**这张表里：它的配置是 YAML，已由 output_egern.lua 单独实现
+-- （7.2 已实施）。它的协议清单与 Surge 家族本就不同（有 VLESS 与 WireGuard，
+-- 没有 SSR 与 Hysteria v1），能力判定一并搬到了那个模块里。
 local FAMILY_CAPS = {
 	surge     = { vless = false, ssr = false },
 	surfboard = { vless = false, ssr = false },
 	surgemac  = { vless = false, ssr = false },
 	loon      = { vless = true,  ssr = true  },
-	egern     = { vless = true,  ssr = false },
 }
 
--- 生成 Surge 风格代理行（Surge / Surfboard / SurgeMac / Loon / Egern 通用）。
+-- 生成 Surge 风格代理行（Surge / Surfboard / SurgeMac / Loon 通用）。
 -- flavor 取目标格式名，只用于「各客户端写法确实不同」的参数 —— 目前是 AnyTLS
 -- 密码的位置与 Reality 是否支持；其余参数各家共用同一套 Surge 语法。
 function M.surge_line(n, flavor)
@@ -198,7 +201,8 @@ function M.surge_line(n, flavor)
 		--     （getsurfboard.com/docs/profile-format/proxy/external-proxy/anytls/）
 		--   Loon：端口之后的位置参数，值用双引号包起来
 		--     `Name = AnyTLS,host,port,"password",sni=...`（nsloon.app/docs/Node/）
-		-- Egern 没有逗号行语法（配置是 YAML），这里沿用具名写法。
+		-- 其余 flavor（surge / surgemac）走上面的具名写法。
+		-- （Egern 已不在本文件里 —— 它的配置是 YAML，见 output_egern.lua。）
 		--
 		-- 这是本文件里唯一按 flavor 分叉的协议：trojan / vmess / vless 一律用具名
 		-- 参数，而 Loon / Surfboard 的文档同样把它们的凭据画在位置参数上 —— 那是
@@ -312,7 +316,7 @@ local function names_of(nodes)
 	return out
 end
 
--- Surge 家族配置（Surge / Surfboard / SurgeMac / Loon / Egern 通用）
+-- Surge 家族配置（Surge / Surfboard / SurgeMac / Loon 通用）
 -- flavor：目标格式名。既决定 surge_line 里按客户端分叉的少数参数，也用来查
 -- FAMILY_CAPS —— 每个调用点不再各自传「支持什么」的布尔量（见 FAMILY_CAPS 的说明）。
 local function surge_config(nodes, group_name, flavor)
@@ -378,14 +382,10 @@ function M.to_loon(nodes, options)
 	return surge_config(nodes, options.name or "PROXY", "loon")
 end
 
--- Egern：这里仍是 Surge 的逗号行 —— 而 Egern 的配置是 YAML，这个格式目前
--- 导出的内容 Egern 读不了（LEGACY_ISSUES 的 7.2，待第三轮实现真正的 YAML 生成器）。
--- 能力过滤（FAMILY_CAPS.egern）已经按 Egern 的真实协议清单生效，所以本轮只影响
--- 「丢不丢节点」，不影响「行本身对不对」。
-function M.to_egern(nodes, options)
-	options = options or {}
-	return surge_config(nodes, options.name or "PROXY", "egern")
-end
+-- Egern 不在本文件里：它的配置是 YAML，而不是这里的逗号行，所以由
+-- output_egern.lua 单独实现（LEGACY_ISSUES 的 7.2 已实施）。
+-- 此前这里是 `surge_config(nodes, name, "egern")` —— 导出的是 Surge 的逗号行，
+-- Egern 根本读不了。
 
 -- Stash：Clash 兼容 YAML
 function M.to_stash(nodes, options)
@@ -586,7 +586,7 @@ function M.generate(nodes, format, options)
 	if format == "surfboard" then return M.to_surfboard(nodes, options) end
 	if format == "surgemac" then return M.to_surgemac(nodes, options) end
 	if format == "loon" then return M.to_loon(nodes, options) end
-	if format == "egern" then return M.to_egern(nodes, options) end
+	-- egern 不在这里：见文件头的说明，它由 output_egern.lua 实现
 	if format == "qx" then return M.to_qx(nodes, options) end
 	if format == "stash" then return M.to_stash(nodes, options) end
 	if format == "clash" then return M.to_clash(nodes, options) end

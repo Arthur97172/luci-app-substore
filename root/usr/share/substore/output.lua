@@ -6,6 +6,7 @@ local output_uri = require("substore.output_uri")
 local output_singbox = require("substore.output_singbox")
 local output_v2ray = require("substore.output_v2ray")
 local output_formats = require("substore.output_formats")
+local output_egern = require("substore.output_egern")
 local output_wgconf = require("substore.output_wireguard_conf")
 
 local M = {}
@@ -60,6 +61,10 @@ local CONTENT_TYPES = {
 	surfboard = "text/plain; charset=utf-8",
 	surgemac = "text/plain; charset=utf-8",
 	loon = "text/plain; charset=utf-8",
+	-- Egern 的配置正文是 YAML，但 Content-Type 与其它 YAML 格式（clash /
+	-- clashmeta / stash）保持 text/plain 一致：这三个是本仓库既有的约定，
+	-- 单独把 egern 改成 application/yaml 只会让同一类内容出现两种类型。
+	-- （后缀已按内容改成 .yaml，见 FILENAME_EXT。）
 	egern = "text/plain; charset=utf-8",
 	qx = "text/plain; charset=utf-8",
 	shadowrocket = "text/plain; charset=utf-8",
@@ -102,7 +107,9 @@ local FILENAME_EXT = {
 	surfboard = "conf",
 	surgemac = "conf",
 	loon = "conf",
-	egern = "conf",
+	-- Egern 的配置是 YAML（output_egern.lua），后缀必须与内容一致：
+	-- 下游按后缀判断格式的客户端会把 .conf 当成 Surge 的逗号行去解析。
+	egern = "yaml",
 	qx = "conf",
 	shadowrocket = "txt",
 	singbox = "json",
@@ -156,7 +163,7 @@ function M.generate(nodes, format, options)
 	if norm == "surfboard" then return output_formats.to_surfboard(nodes, options) end
 	if norm == "surgemac" then return output_formats.to_surgemac(nodes, options) end
 	if norm == "loon" then return output_formats.to_loon(nodes, options) end
-	if norm == "egern" then return output_formats.to_egern(nodes, options) end
+	if norm == "egern" then return output_egern.generate(nodes, options) end
 	if norm == "shadowrocket" then return output_uri.to_shadowrocket(nodes) end
 	if norm == "qx" then return output_formats.to_qx(nodes, options) end
 	if norm == "singbox" then return output_singbox.generate(nodes) end

@@ -2,6 +2,67 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.2-r4] - 真正实现 Egern 的 YAML 生成器（LEGACY_ISSUES 7.2）
+
+`docs/LEGACY_ISSUES.md` 第七节 2.7.2 审计新发现的**第三轮**修复。
+
+### 修复 — 7.2-A：Egern 不再输出 Surge 逗号行，改为真正的 YAML
+
+选 Egern 格式导出的内容此前是 **Surge 的逗号行**（`output_formats.to_egern` 就是
+`surge_config(nodes, name, "egern")`），而 Egern 的配置是 YAML —— 用户拿到的东西
+Egern 根本读不了，且导出时没有任何提示。
+
+新增 `root/usr/share/substore/output_egern.lua`，并删除 `output_formats.to_egern`
+与其 `M.generate` 分支；`output.lua` 的分发改走新模块，下载后缀由 `.conf` 改为
+`.yaml`。结构逐字段对照官方示例（`egernapp.com/docs/configuration/example/`）与
+协议字段表（`.../configuration/proxies/`），无推测项：
+
+- `proxies:` 是顶层列表，每项是**单键映射**，键名即小写协议名（`- shadowsocks:`），
+  字段名一律 **snake_case**（`user_id` / `peer_public_key` / `skip_tls_verify` /
+  `udp_relay` / `obfs_password` / `service_name` / `local_ipv4` / `udp_relay_mode`）。
+- vmess / vless 的传输层是 `transport:` 子映射，键名是传输类型本身
+  （`tls` / `ws` / `wss` / `grpc` / `http2`）。**TLS 也是其中一种**，没有顶层
+  `tls:` 开关 —— 「明文 tcp」就是完全不写 `transport`。
+- Reality 的嵌套位置**按协议分叉**：vmess / vless 在 `transport.<类型>.reality` 里，
+  trojan / anytls 是节点顶层的 `reality:` 对象；键名 `public_key` / `short_id`。
+- `policy_groups:` 同为顶层列表，`select` 用 `policies:`；空列表兜底 `DIRECT`。
+
+**顺带修正的两处既有行为**（都由 `protocol_registry_test` 的 `DROPPED` 表锁定）：
+
+| 协议 | 此前 | 现在 | 原因 |
+|---|---|---|---|
+| wireguard | 丢弃 | **保留** | Egern 的 WireGuard 有独立协议块，YAML 能完整表达（Surge 的单行 `[Proxy]` 表达不了） |
+| hysteria (v1) | 保留 | **丢弃** | Egern 的协议清单里只有 Hysteria2；v1 的 `obfs` 是普通字符串、没有 `obfs_password`，拿 v2 的键去顶会让客户端按错误的协议去连 |
+
+YAML 标量转义从 `output_clash_meta.lua` 导出为 `M.esc_yaml` 共用（另抄一份必然
+漂移 —— 「未加引号的 `password: %foo` 会让客户端拒绝整份配置」是同一个坑）。
+`Content-Type` 保持 `text/plain; charset=utf-8`，与同类的 clash / clashmeta / stash
+一致；`FAMILY_CAPS` 里的 egern 行删除（能力判定搬进 `EGERN_KEY`）。
+
+**未做的一处（不猜）**：vmess 的 `legacy` 只在节点显式带该字段时输出。官方文档
+没有给出「`alterId > 0` ⇒ `legacy: true`」的对应关系，本仓库也没有 `alterId` 字段，
+不臆测映射。
+
+### 回归测试
+
+新增 `tests/output_egern_test.lua`（**63 条断言**）：顶层结构、逐协议字段名、
+transport 嵌套（ws / wss / grpc / http2）、Reality 的两种嵌套位置、SSR 与
+Hysteria v1 的整条丢弃、名字唯一性与重命名、YAML 转义、端口兜底、格式注册。
+`tests/protocol_registry_test.lua` 的 `DROPPED` 表按上表改（删 `wireguard.egern`、
+加 `hysteria.egern`）；`tests/anytls_reality_test.lua` 的 egern 断言从「具名密码、
+无 reality」改为 YAML 形态。
+
+**反向验证**：把 `output.lua` 与 `output_formats.lua` stash 掉（保留全部新测试）
+后跑 `tests/output_egern_test.lua`，得到 **53 条 FAIL**（旧代码走 `to_egern`，
+输出的是逗号行）；`git stash pop` 后 **0 条 FAIL**，全套 58 个文件、0 失败。
+
+### 文档
+
+- `docs/LEGACY_ISSUES.md`：状态表 7.2 → 已实施；新增「第三轮修复记录」含反向
+  验证；「实测探针」的修复后段更新为 `[2.7.2-r4]` 的真实 Egern YAML 输出。
+- `README.md` / `README.en.md`：协议清单的出处补充 `EGERN_KEY`（Egern 的清单
+  不在 `FAMILY_CAPS` 里）。
+
 ## [2.7.2-r3] - 按客户端协议清单过滤，并按各家文档修正 Loon / QX 的 Reality 与凭据写法（LEGACY_ISSUES 7.1 / 7.3 / 7.4）
 
 `docs/LEGACY_ISSUES.md` 第七节 2.7.2 审计新发现的**第二轮**修复。改动全部落在

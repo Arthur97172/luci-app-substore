@@ -651,7 +651,7 @@ crontab 里，`substore-cron.sh` 会拿着已不存在的 id 反复执行，每�
 | # | 决策 | 状态 |
 |---|---|---|
 | 7.1 | A：引入 `FAMILY_CAPS` 按客户端能力表过滤 | **已实施**（第二轮，见下） |
-| 7.2 | A：真正实现 Egern YAML 生成器 | 待实施（第三轮） |
+| 7.2 | A：真正实现 Egern YAML 生成器 | **已实施**（第三轮，见下） |
 | 7.3 | C：只对带 `public-key` 的 vmess / vless 分叉 `qx_tls` | **已实施**（第二轮，见下） |
 | 7.4 | A：Loon 位置参数化（并给 `public-key` 加双引号） | **已实施**（第二轮，见下） |
 | 7.5 | 修复 | **已修复**（第一轮，见下） |
@@ -661,12 +661,13 @@ crontab 里，`substore-cron.sh` 会拿着已不存在的 id 反复执行，每�
 | 7.9 | 记录（第二轮实施时新发现） | 待决策 |
 
 7.5 / 7.6 的修复见本节末尾「7.5 / 7.6 修复记录」，
-7.1 / 7.3 / 7.4 的实施见「第二轮修复记录」。
+7.1 / 7.3 / 7.4 的实施见「第二轮修复记录」，
+7.2 的实施见「第三轮修复记录」。
 
 | # | 问题 | 位置 | 依据 | 影响 |
 |---|---|---|---|---|
-| 7.1 | Surge 格式会为 VLESS 节点生成代理行，而 Surge 的协议清单里没有 VLESS | `output_formats.surge_config` | Surge 手册（`manual.nssurge.com`）协议清单无 VLESS；探针见下 | 节点必然不可用（Surge 对「不认识的代理行」的处置**未获官方证实** —— 官方只说明过无法识别的 *section* 会原样保留且不报错；此处按「不输出客户端读不懂的东西」处理，与丢弃 wireguard / ssr 同一约定）。**已按 A 实施**：新增 `FAMILY_CAPS`，Surge / Surfboard / SurgeMac 丢 vless，Egern 丢 ssr |
-| 7.2 | Egern 格式输出的是 Surge 逗号行，而 Egern 的配置是 YAML | `output_formats.to_egern` | `egernapp.com/docs/configuration/proxies/`；探针见下 | 选 Egern 格式导出的内容 Egern 读不了 |
+| 7.1 | Surge 格式会为 VLESS 节点生成代理行，而 Surge 的协议清单里没有 VLESS | `output_formats.surge_config` | Surge 手册（`manual.nssurge.com`）协议清单无 VLESS；探针见下 | 节点必然不可用（Surge 对「不认识的代理行」的处置**未获官方证实** —— 官方只说明过无法识别的 *section* 会原样保留且不报错；此处按「不输出客户端读不懂的东西」处理，与丢弃 wireguard / ssr 同一约定）。**已按 A 实施**：新增 `FAMILY_CAPS`，Surge / Surfboard / SurgeMac 丢 vless。（第二轮时 Egern 也在表里丢 ssr；第三轮 7.2 实施后 Egern 有了自己的模块，能力判定随之搬进 `output_egern.lua` 的 `EGERN_KEY`。） |
+| 7.2 | Egern 格式输出的是 Surge 逗号行，而 Egern 的配置是 YAML | `output_formats.to_egern`（**已删除**） | `egernapp.com/docs/configuration/example/` 与 `.../proxies/`；探针见下 | 选 Egern 格式导出的内容 Egern 读不了。**已按 A 实施**：新增 `output_egern.lua`（真正的 YAML 生成器），`output_formats.to_egern` 与其 `M.generate` 分支一并删除；后缀 `.conf` → `.yaml` |
 | 7.3 | QX 的 vmess / vless 用 `tls-host=` + `tls-verification=true` 表示 TLS，官方 `sample.conf` 用 `obfs=over-tls` / `obfs=wss` + `obfs-host` | `output_formats.qx_tls` | `crossutility/Quantumult-X` 的 `sample.conf`；探针见下 | 见 7.3 的详细说明 —— **会让新加的 QX vmess/vless Reality 公钥不生效** |
 | 7.4 | Loon 的 trojan / vmess / vless 凭据在官方文档里是**位置参数**，本生成器一律写具名参数（只有 anytls 按 flavor 分对了） | `output_formats.surge_line` | `nsloon.app/docs/Node/` 的示例行 | Loon 是否同时接受具名写法**无文档依据**；若不接受则这几类节点导出到 Loon 后连不上。**已按 A 实施**：Loon 改位置参数，Surfboard 的同类问题见 7.9 |
 | 7.5 | ~~`parser_surge` 的行拆分不是引号感知的（`rest:gmatch("[^,]+")`）~~ **已修复** | `parser_surge.lua` 的 `split_fields` | 代码级：位置参数里含逗号的值会被切断 | 别人给的 Loon / QX 配置里带逗号的密码被**静默截断**（生成端已有「含逗号就整条丢弃」的防护，解析端没有对应防护） |
@@ -780,7 +781,7 @@ vmess=1.2.3.4:443, method=none, password=u, tls-host=s.example.com,
 tls-verification=true, reality-base64-pubkey=PBK, reality-hex-shortid=SID, tag=R
 ```
 
-**修复后**（`[2.7.2-r3]`，7.1 与 7.3 已实施；7.2 未实施，第三轮）：
+**修复后**（`[2.7.2-r4]`，7.1 / 7.2 / 7.3 均已实施）：
 
 ```
 $ ... out.generate({vless节点}, "surge", {name="P"}) ...
@@ -791,8 +792,57 @@ P = select, DIRECT
        ↑ [Proxy] 段为空：节点被 FAMILY_CAPS 整体丢弃（连成员列表也不引用它）
 
 $ ... out.generate({vmess节点}, "egern", {name="P"}) ...
-[Proxy]
-M = vmess, 1.2.3.4, 443, username=u, tls=true        ← 仍是逗号行：7.2 未实施
+proxies:
+  - vmess:
+      name: M
+      server: 1.2.3.4
+      port: 443
+      user_id: u
+      security: auto
+policy_groups:
+  - select:
+      name: P
+      policies:
+        - M
+       ↑ 7.2-A：真正的 Egern YAML —— 协议名是映射键、字段 snake_case
+         （此前 `[2.7.2-r3]` 及更早输出的是 `M = vmess, 1.2.3.4, 443, username=u, tls=true`
+           这样的 Surge 逗号行，Egern 读不了）
+
+$ ... out.generate({vless+reality节点}, "egern", {name="P"}) ...
+proxies:
+  - vless:
+      name: V
+      server: 1.2.3.4
+      port: 443
+      user_id: u
+      transport:
+        tls:
+          sni: s.example.com
+          reality:
+            public_key: PBK
+            short_id: SID
+       ↑ 7.2-A：Reality 在 transport.<类型>.reality 里，键名是 public_key / short_id
+
+$ ... out.generate({wireguard节点}, "egern", {name="P"}) ...
+proxies:
+  - wireguard:
+      name: W
+      server: 1.2.3.4
+      port: 51820
+      private_key: k
+      peer_public_key: k2
+      local_ipv4: 10.0.0.2/32
+       ↑ 7.2-A 顺带补上的能力：Egern 的 WireGuard 有独立协议块
+         （此前走 surge_config 的单行 [Proxy]，只能整条丢弃）
+
+$ ... out.generate({ssr节点}, "egern", {name="P"}) ...
+proxies: []
+policy_groups:
+  - select:
+      name: P
+      policies:
+        - DIRECT
+       ↑ Egern 的协议清单里没有 SSR（也没有 Hysteria v1）：整条丢弃
 
 $ ... out.generate({vmess+reality节点}, "qx", {name="P"}) ...
 [server_local]
@@ -889,6 +939,10 @@ x25519 / bech32 / armor / STREAM，实际只写到 `M._hkdf_sha256` 就停了，
 | loon | ✓ | ✓ | `nsloon.app/docs/Node/` 有独立的 VLESS 与 ShadowsocksR 两节 |
 | egern | ✓ | ✗ | `egernapp.com/docs/configuration/proxies/` 的协议清单有 Vless、无 ssr |
 
+> 第三轮 7.2 实施后 **egern 已移出这张表** —— 它的配置是 YAML，改由
+> `output_egern.lua` 的 `EGERN_KEY` 决定收哪些协议（上表这一行是第二轮当时的
+> 真实状态，保留作记录）。
+
 `surge_config(nodes, group_name, flavor)` 改成按这张表丢节点（此前是调用点各传一个
 `supports_ssr` 布尔量 —— 加一个维度就要再加一个参数，调用点一多必然漏传，
 而漏传的默认值是「支持」）。五个调用方（surge / surfboard / surgemac / loon / egern）
@@ -937,6 +991,63 @@ surgemac 与 `ssr` 的 egern；`tests/output_layer_fixes_test.lua` 的 F6 改挂
 | `tests/protocol_registry_test.lua` | 2 | `vless`(surge/surfboard/surgemac) 与 `ssr`(egern) 的 `want dropped got true` |
 
 `git stash pop` 后 **0 条 FAIL**，全套 57 个文件、0 失败。
+
+## 第三轮修复记录（7.2）
+
+**7.2-A Egern YAML 生成器** —— 新增 `root/usr/share/substore/output_egern.lua`，
+并删除 `output_formats.to_egern`（连同 `M.generate` 里的 `format == "egern"` 分支）。
+`output.lua` 的分发改为 `output_egern.generate`，下载后缀 `.conf` → `.yaml`
+（`Content-Type` 保持 `text/plain; charset=utf-8`，与同类的 clash / clashmeta /
+stash 三个 YAML 格式一致 —— 单独给 egern 换成 `application/yaml` 只会让同一类内容
+出现两种类型）。
+
+**结构**（逐字段对照官方示例 `egernapp.com/docs/configuration/example/` 与协议字段表
+`.../configuration/proxies/`，无推测项）：
+
+* `proxies:` 是**顶层键**、值是列表，每项是**单键映射**，键名即小写协议名
+  （`- shadowsocks:`）—— 不是 Clash 的 `type:` 字段。字段名一律 **snake_case**：
+  `user_id` / `peer_public_key` / `preshared_key` / `skip_tls_verify` / `udp_relay` /
+  `obfs_password` / `service_name` / `local_ipv4` / `dns_servers` / `udp_relay_mode`。
+* vmess / vless 的传输层是 `transport:` 子映射，键名是传输类型本身：
+  `tls` / `ws` / `wss` / `http1` / `http2` / `grpc`。**TLS 也是其中一种**，
+  没有顶层 `tls:` 开关 —— 「明文 tcp」就是完全不写 `transport`。这与 Clash 的
+  `network: ws` + `ws-opts` 是两套完全不同的写法。
+* Reality 的嵌套位置**按协议分叉**：vmess / vless 在 `transport.<类型>.reality` 里，
+  trojan / anytls 是节点**顶层**的 `reality:` 对象。键名是 `public_key` / `short_id`
+  （既不是统一模型的 `public-key` / `short-id`，也不是 Clash 的 `reality-opts`）。
+  写错键名客户端**不报错**，只是 Reality 静默失效、退回普通 TLS。
+* `policy_groups:` 同为顶层列表，`select` 用 `policies:` 列表；空列表时兜底 `DIRECT`。
+
+**协议清单的差异**（`EGERN_KEY`，与 Surge 家族的 `FAMILY_CAPS` 是两回事）：
+Egern 有 **VLESS** 与 **WireGuard**，没有 **SSR** 与 **Hysteria v1**。后两者整条丢弃
+（Hysteria v1 的 `obfs` 是普通字符串、没有 `obfs_password`，拿 v2 的键去顶会让客户端
+按错误的协议去连）。`FAMILY_CAPS` 里的 egern 行随之删除。
+
+**顺带修正的两处既有行为**（都由 `protocol_registry_test` 的 `DROPPED` 表锁定）：
+
+| 协议 | 此前 | 现在 | 原因 |
+|---|---|---|---|
+| wireguard | 丢弃（走 Surge 逗号行） | **保留** | Egern 的 WireGuard 有独立协议块，YAML 能完整表达 |
+| hysteria (v1) | 保留（走 Surge 逗号行） | **丢弃** | Egern 的清单里只有 Hysteria2 |
+
+**复用而非复制**：YAML 标量转义（引号触发集、控制字符、c-indicator）从
+`output_clash_meta.lua` 导出为 `M.esc_yaml` 共用 —— 另抄一份必然漂移，而
+「未加引号的 `password: %foo` 会让客户端拒绝整份配置」是同一个坑。
+
+**未做的一处（不猜）**：vmess 的 `legacy` 只在节点显式带 `legacy` 字段时输出。
+官方文档没有给出「`alterId > 0` ⇒ `legacy: true`」的对应关系，本仓库也没有
+`alterId` 字段，因此不臆测映射，留待有依据时再补。
+
+**回归测试**：新增 `tests/output_egern_test.lua`（63 条断言），覆盖顶层结构、
+逐协议的字段名、transport 嵌套（ws/wss/grpc/http2）、Reality 的两种嵌套位置、
+SSR 与 Hysteria v1 的整条丢弃、名字唯一性与重命名、YAML 转义、端口兜底、格式注册。
+`tests/protocol_registry_test.lua` 的 `DROPPED` 表按上表改（删 `wireguard.egern`、
+加 `hysteria.egern`）；`tests/anytls_reality_test.lua` 的 egern 断言从「具名密码、
+无 reality」改为 YAML 形态（`password: p` + `reality:` 子对象）。
+
+**反向验证**：把 `output.lua` 与 `output_formats.lua` stash 掉（保留全部新测试）后
+跑 `tests/output_egern_test.lua`，得到 **53 条 FAIL**（旧代码走 `to_egern`，输出的是
+逗号行）；`git stash pop` 后 **0 条 FAIL**，全套 58 个文件、0 失败。
 
 ---
 

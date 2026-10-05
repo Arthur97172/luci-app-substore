@@ -65,7 +65,9 @@ group them, then re-emit them in a format your client can consume.
 - SSR (`ssr://`) can only be emitted to clients that support it (Mihomo, Stash, Loon,
   Shadowrocket); other targets drop it. VLESS works the same way: Surge / Surfboard /
   Surge Mac do not list it among their protocols (see `FAMILY_CAPS` in
-  `output_formats.lua` for the per-client protocol lists)
+  `output_formats.lua` for the Surge family and Loon; Egern's config is YAML and its
+  list lives in `EGERN_KEY` in `output_egern.lua` — it has VLESS and WireGuard but
+  neither SSR nor Hysteria v1)
 - **Only content the target client can actually load is emitted**: protocols are
   filtered by target capability, array-valued fields use the type the client expects,
   and proxy-group member lists drop node names that would break their syntax

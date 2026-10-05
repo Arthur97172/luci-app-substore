@@ -84,8 +84,9 @@ local DROPPED = {
 	},
 	trojan      = { wgconf = "wgconf 只收 wireguard" },
 	shadowsocks = { wgconf = "wgconf 只收 wireguard" },
-	-- ssr：Surge/Surfboard/SurgeMac 与 Egern 都不支持（FAMILY_CAPS 的 ssr=false），
-	-- 只有 Loon 支持（nsloon.app/docs/Node/ 有独立 ShadowsocksR 一节）；
+	-- ssr：Surge/Surfboard/SurgeMac 不支持（FAMILY_CAPS 的 ssr=false），Egern 也不支持
+	-- （output_egern.lua 的 EGERN_KEY 里没有 ssr —— 它的官方协议清单里只有 Shadowsocks，
+	--   没有 SSR）；只有 Loon 支持（nsloon.app/docs/Node/ 有独立 ShadowsocksR 一节）；
 	-- to_qx 只认 ss/vmess/vless/trojan；singbox 的 supported() 明确排除 ssr；
 	-- v2ray 的 V2RAY_PROTOS 里没有 ssr。
 	ssr         = {
@@ -95,18 +96,25 @@ local DROPPED = {
 		v2ray = "V2RAY_PROTOS 无 ssr", wgconf = "wgconf 只收 wireguard",
 	},
 	-- hysteria2 / tuic / hysteria：原版 Clash、qx、v2ray 都不支持
+	-- （hysteria v1 另有一处：Egern 的协议清单里只有 Hysteria2。v1 与 v2 的字段结构
+	--   不同 —— v1 的 obfs 是普通字符串、没有 obfs_password —— 拿 Hysteria2 的键去顶
+	--   会让客户端按错误的协议去连，所以 output_egern.lua 整条丢弃。）
 	hysteria2   = { clash = "原版 Clash 无 hysteria2", qx = "to_qx 无 hysteria2",
 		v2ray = "V2RAY_PROTOS 无 hysteria2", wgconf = "wgconf 只收 wireguard" },
 	tuic        = { clash = "原版 Clash 无 tuic", qx = "to_qx 无 tuic",
 		v2ray = "V2RAY_PROTOS 无 tuic", wgconf = "wgconf 只收 wireguard" },
 	hysteria    = { clash = "原版 Clash 无 hysteria", qx = "to_qx 无 hysteria",
-		v2ray = "V2RAY_PROTOS 无 hysteria", wgconf = "wgconf 只收 wireguard" },
+		v2ray = "V2RAY_PROTOS 无 hysteria", wgconf = "wgconf 只收 wireguard",
+		egern = "Egern 只有 Hysteria2，没有 Hysteria v1" },
 	-- wireguard：Surge 家族需要专用的多段 [WireGuard] 配置，单行 [Proxy] 表达不了，
 	-- surge_config 统一丢弃；原版 Clash / qx / v2ray 同样不支持。
+	-- Egern **不在**此列：它的配置是 YAML，WireGuard 有独立的协议块
+	-- （private_key / peer_public_key / local_ipv4…），output_egern.lua 能完整表达 ——
+	-- 这是 7.2 实施后新获得的能力（此前走 surge_config 的逗号行，只能丢弃）。
 	-- （shadowrocket / v2rayuri 会输出本项目自定义的 wireguard:// 链接 —— 这是既有
 	--   行为，此处如实记录，并不代表已验证该 scheme 被客户端接受。）
 	wireguard   = { clash = "原版 Clash 无 wireguard", surge = "Surge 单行表达不了",
-		surfboard = "同 Surge", surgemac = "同 Surge", loon = "同 Surge", egern = "同 Surge",
+		surfboard = "同 Surge", surgemac = "同 Surge", loon = "同 Surge",
 		qx = "to_qx 无 wireguard", v2ray = "V2RAY_PROTOS 无 wireguard" },
 	socks       = { qx = "to_qx 无 socks", wgconf = "wgconf 只收 wireguard" },
 	-- anytls：mihomo / Stash / sing-box 1.12+ / Shadowrocket / Surge 家族
