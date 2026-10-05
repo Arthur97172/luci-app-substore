@@ -72,14 +72,25 @@ for _, opt in ipairs(output.FORMAT_OPTIONS) do FORMATS[#FORMATS + 1] = opt[1] en
 local DROPPED = {
 	-- output_wireguard_conf 只输出 wireguard 节点，其余一律过滤
 	vmess       = { wgconf = "wgconf 只收 wireguard" },
-	vless       = { clash = "原版 Clash 无 VLESS", wgconf = "wgconf 只收 wireguard" },
+	-- vless：Surge / Surfboard / SurgeMac 的官方协议清单里都没有 VLESS
+	-- （manual.nssurge.com 的 Proxy Protocols、getsurfboard.com 的 external-proxy），
+	-- Loon 与 Egern 支持（nsloon.app/docs/Node/ 有独立 VLESS 一节、
+	-- egernapp.com/docs/configuration/proxies/ 的协议清单含 Vless）；
+	-- 原版 Clash 无 VLESS；wgconf 只收 wireguard。过滤点在 surge_config
+	-- （查 FAMILY_CAPS），FAMILY_CAPS 是唯一声明。
+	vless       = {
+		clash = "原版 Clash 无 VLESS", wgconf = "wgconf 只收 wireguard",
+		surge = "Surge 无 VLESS", surfboard = "Surfboard 无 VLESS", surgemac = "SurgeMac 无 VLESS",
+	},
 	trojan      = { wgconf = "wgconf 只收 wireguard" },
 	shadowsocks = { wgconf = "wgconf 只收 wireguard" },
-	-- ssr：Surge/Surfboard/SurgeMac 不支持（surge_config 的 supports_ssr=false），
-	-- Loon/Egern 支持；to_qx 只认 ss/vmess/vless/trojan；singbox 的 supported()
-	-- 明确排除 ssr；v2ray 的 V2RAY_PROTOS 里没有 ssr。
+	-- ssr：Surge/Surfboard/SurgeMac 与 Egern 都不支持（FAMILY_CAPS 的 ssr=false），
+	-- 只有 Loon 支持（nsloon.app/docs/Node/ 有独立 ShadowsocksR 一节）；
+	-- to_qx 只认 ss/vmess/vless/trojan；singbox 的 supported() 明确排除 ssr；
+	-- v2ray 的 V2RAY_PROTOS 里没有 ssr。
 	ssr         = {
 		surge = "Surge 无 SSR", surfboard = "Surfboard 无 SSR", surgemac = "SurgeMac 无 SSR",
+		egern = "Egern 无 SSR（协议清单只有 Shadowsocks，没有 SSR）",
 		qx = "to_qx 只认 ss/vmess/vless/trojan", singbox = "singbox 不支持 ssr",
 		v2ray = "V2RAY_PROTOS 无 ssr", wgconf = "wgconf 只收 wireguard",
 	},

@@ -650,27 +650,30 @@ crontab 里，`substore-cron.sh` 会拿着已不存在的 id 反复执行，每�
 
 | # | 决策 | 状态 |
 |---|---|---|
-| 7.1 | A：引入 `FAMILY_CAPS` 按客户端能力表过滤 | 待实施（第二轮） |
+| 7.1 | A：引入 `FAMILY_CAPS` 按客户端能力表过滤 | **已实施**（第二轮，见下） |
 | 7.2 | A：真正实现 Egern YAML 生成器 | 待实施（第三轮） |
-| 7.3 | C：只对带 `public-key` 的 vmess / vless 分叉 `qx_tls` | 待实施（第二轮） |
-| 7.4 | A：Loon 位置参数化（并给 `public-key` 加双引号） | 待实施（第二轮） |
+| 7.3 | C：只对带 `public-key` 的 vmess / vless 分叉 `qx_tls` | **已实施**（第二轮，见下） |
+| 7.4 | A：Loon 位置参数化（并给 `public-key` 加双引号） | **已实施**（第二轮，见下） |
 | 7.5 | 修复 | **已修复**（第一轮，见下） |
 | 7.6 | 修复 | **已修复**（第一轮，见下） |
 | 7.7 | A：后端错误串 msgid 化 | 待实施（第四轮） |
 | 7.8 | A：删除 `age.lua` / `age_test.lua` | **已删除**（第一轮） |
+| 7.9 | 记录（第二轮实施时新发现） | 待决策 |
 
-7.5 / 7.6 的修复见本节末尾「7.5 / 7.6 修复记录」。
+7.5 / 7.6 的修复见本节末尾「7.5 / 7.6 修复记录」，
+7.1 / 7.3 / 7.4 的实施见「第二轮修复记录」。
 
 | # | 问题 | 位置 | 依据 | 影响 |
 |---|---|---|---|---|
-| 7.1 | Surge 格式会为 VLESS 节点生成代理行，而 Surge 的协议清单里没有 VLESS | `output_formats.surge_config` | Surge 手册（`manual.nssurge.com`）协议清单无 VLESS；探针见下 | 节点必然不可用（Surge 对「不认识的代理行」的处置**未获官方证实** —— 官方只说明过无法识别的 *section* 会原样保留且不报错；此处按「不输出客户端读不懂的东西」处理，与丢弃 wireguard / ssr 同一约定） |
+| 7.1 | Surge 格式会为 VLESS 节点生成代理行，而 Surge 的协议清单里没有 VLESS | `output_formats.surge_config` | Surge 手册（`manual.nssurge.com`）协议清单无 VLESS；探针见下 | 节点必然不可用（Surge 对「不认识的代理行」的处置**未获官方证实** —— 官方只说明过无法识别的 *section* 会原样保留且不报错；此处按「不输出客户端读不懂的东西」处理，与丢弃 wireguard / ssr 同一约定）。**已按 A 实施**：新增 `FAMILY_CAPS`，Surge / Surfboard / SurgeMac 丢 vless，Egern 丢 ssr |
 | 7.2 | Egern 格式输出的是 Surge 逗号行，而 Egern 的配置是 YAML | `output_formats.to_egern` | `egernapp.com/docs/configuration/proxies/`；探针见下 | 选 Egern 格式导出的内容 Egern 读不了 |
 | 7.3 | QX 的 vmess / vless 用 `tls-host=` + `tls-verification=true` 表示 TLS，官方 `sample.conf` 用 `obfs=over-tls` / `obfs=wss` + `obfs-host` | `output_formats.qx_tls` | `crossutility/Quantumult-X` 的 `sample.conf`；探针见下 | 见 7.3 的详细说明 —— **会让新加的 QX vmess/vless Reality 公钥不生效** |
-| 7.4 | Loon / Surfboard 的 trojan / vmess / vless 凭据在官方文档里是**位置参数**，本生成器一律写具名参数（只有 anytls 按 flavor 分对了） | `output_formats.surge_line` | `nsloon.app/docs/Node/` 的示例行 | Loon 是否同时接受具名写法**无文档依据**，待核实；若不接受则这几类节点导出到 Loon 后连不上 |
+| 7.4 | Loon 的 trojan / vmess / vless 凭据在官方文档里是**位置参数**，本生成器一律写具名参数（只有 anytls 按 flavor 分对了） | `output_formats.surge_line` | `nsloon.app/docs/Node/` 的示例行 | Loon 是否同时接受具名写法**无文档依据**；若不接受则这几类节点导出到 Loon 后连不上。**已按 A 实施**：Loon 改位置参数，Surfboard 的同类问题见 7.9 |
 | 7.5 | ~~`parser_surge` 的行拆分不是引号感知的（`rest:gmatch("[^,]+")`）~~ **已修复** | `parser_surge.lua` 的 `split_fields` | 代码级：位置参数里含逗号的值会被切断 | 别人给的 Loon / QX 配置里带逗号的密码被**静默截断**（生成端已有「含逗号就整条丢弃」的防护，解析端没有对应防护） |
 | 7.6 | ~~Loon 的 `transport=ws` 未映射到 `net`~~ **已修复** | `parser_surge.parse_surge_line` 的 `transport=` 分支 | 只认 `ws=true`（Surge 旧写法）与 `obfs=ws`（QX）；`nsloon.app/docs/Node/` 用 `transport=ws` + `path=` + `host=` | Loon 的 ws 节点导入后 `net=tcp`，`path` / `host` 全丢 → 导出到任何格式都按 tcp 连，握手失败**且不报错** |
 | 7.7 | 后端模块仍有 **113 处**硬编码中文字符串字面量（注释外） | `core.lua` 47 / `http.lua` 47 / `parser.lua` 9 / `util.lua` 5 / `output_wireguard_conf.lua` 3 / `node.lua` 2 | 扫描脚本（去注释后提取含 CJK / 全角的字符串字面量），见下 | 控制器文案已接入 i18n，但这些来自后端的失败原因经 `?err=` **原样**显示，英文界面下仍是中文 |
 | 7.8 | ~~`root/usr/share/substore/age.lua` 与 `tests/age_test.lua` 未被 git 跟踪，且 `age.lua` 未被任何模块 `require`~~ **已删除** | 仓库根 | `grep -rn require` 无引用 | 未随包发布；留在工作区会被后续审计反复重新评估 |
+| 7.9 | Loon 的节点行仍有**多处**与官方文档不一致；Surfboard 的 trojan / vmess / vless 凭据同样是位置参数；Loon 的双引号其实**能**保住逗号 | `output_formats.surge_line` | `nsloon.app/docs/Node/`；`getsurfboard.com` | 逐条见下「7.9 的明细」。均未实施（本轮只做决策里点名的 7.4-A） |
 
 ### 7.7 的统计口径与例外（修复前必读）
 
@@ -702,6 +705,61 @@ crontab 里，`substore-cron.sh` 会拿着已不存在的 id 反复执行，每�
 **关键设计点**：`meta.error` 会被 `it.error` 原样显示，所以 msgid 必须**语言中立**
 （英文），翻译只发生在显示边界（视图 / 控制器），后端模块不得 `require("luci.i18n")`
 —— `substore-cron.sh` 会在独立的 lua 进程里跑 `core.sync`，那里没有 LuCI 环境。
+
+### 7.9 的明细（第二轮实施时新发现，**均未实施**）
+
+第二轮为实施 7.4-A 去核对 Loon 的节点行文档（`nsloon.app/docs/Node/`），顺带发现
+Loon 与 Surge 家族的不一致远不止「凭据位置」。以下每条都对照官方文档原文，
+**没有推测项**；本轮按用户的轮次安排只做决策里点名的 7.4-A，其余记录在此待决策。
+
+**(a) Loon 的 TLS 开关写作 `over-tls`，本生成器写 `tls`** —— 影响最大的一条。
+Loon 文档的通用参数表与 Reality 示例都用 `over-tls=true`：
+
+```
+节点名称 = VMess,服务器,端口,加密方式,"UUID",transport=传输方式,可选参数
+… ,public-key="…",short-id=…,over-tls=true
+```
+
+本生成器对 Loon 的 vmess / vless / trojan 一律写 `tls=true`（Surge 的写法）。
+Loon 文档**只**为传输参数明说了旧写法别名（`ws=true` ↔ `transport=ws`、
+`ws-path` ↔ `path`、`ws-headers=Host:域名` ↔ `host`），**没有**把 `tls` 列为
+`over-tls` 的别名，也没有说它会被拒绝。所以「`tls=true` 在 Loon 里是否生效」
+**无依据**。若被忽略，Loon 上的 vmess / vless / trojan 会按明文连 ——
+**包括本轮新支持的 Reality 节点**（公钥写了、TLS 标志却没生效）。
+这条不修，7.4-A 与 Reality 支持在真机 Loon 上的收益都要打折。
+
+**(b) Loon 的 UDP 参数写作 `udp`，本生成器写 `udp-relay`** —— 同上，Loon 文档是
+`udp=true`。影响较小（UDP 转发失效，节点本身还能用）。
+
+**(c) Surge 家族的 vmess 不输出 `encrypt-method`** —— Surge 手册的 vmess 页有
+`encrypt-method` 参数，取值 `aes-128-gcm`（默认）或 `chacha20-ietf-poly1305`。
+本生成器只写 `username=`，所以 cipher 是 chacha20 的节点会被 Surge 按默认的
+`aes-128-gcm` 去连 —— **静默用错算法**，与 F5/F6 同一类失效。注意拼写差异：
+统一模型写 `chacha20-poly1305`，Surge / Loon 都写 `chacha20-ietf-poly1305`
+（Loon 侧本轮已用 `LOON_VMESS_CIPHER` 映射，Surge 侧没有对应参数可写）。
+
+**(d) Loon 的 shadowsocks / ssr / hysteria2 凭据也是位置参数** —— Loon 文档：
+
+```
+节点名称 = Shadowsocks,服务器,端口,加密方式,"密码",可选参数
+节点名称 = ShadowsocksR,服务器,端口,加密方式,"密码",protocol=协议,…
+节点名称 = Hysteria2,服务器,端口,"密码",可选参数
+```
+
+本生成器对这些协议一律写具名参数（`encrypt-method=` / `password=`）。
+
+**(e) Loon 的双引号确实能保住逗号** —— 文档原文「参数值中含有英文逗号时，
+请使用双引号包裹」。本文件此前注释写的「Loon 的那对引号只是标记，值里的逗号
+照样是分隔符」是**错的**，已在本轮更正。当前实现仍按「含逗号就整条丢弃」处理
+（保守：本行的具名参数一律不带引号，两种约定混用会让行为依赖客户端实现），
+代价是极少见的「密码里带逗号」的节点在 Loon 上被丢弃。
+
+**(f) 更正：Surfboard 的 trojan / vmess / vless 凭据是具名写法，不是位置参数** ——
+本节 7.4 行原先把 Surfboard 与 Loon 并列，是**误判**。复核 `getsurfboard.com` 的
+vmess 页：其 Format 模板写 `{username}` 位置，但**实际示例与参数表都是 `key=value`**
+（`ProxyVMess = vmess, 1.2.3.4, 8000, username=0233d11c-…`）；Surge 手册的 vmess /
+trojan 页同样写 `username=` / `password=`。所以 Surge / Surfboard / SurgeMac 的
+具名写法**是对的**，7.4 只该改 Loon —— 7.4 行已按此更正。
 
 ## 7.1 / 7.2 / 7.3 的实测探针
 
@@ -746,6 +804,14 @@ vmess / vless / trojan / anytls 四类，与 `sample.conf` 的 Reality 条目一
 `obfs=over-tls` + `obfs-host`，trojan / anytls 维持现状），需要同步更新
 `parser_surge.parse_qx_line` 的读取端与 `tests/protocol_registry_test.lua`。
 
+**已按候选 C 实施**（第二轮）：分叉只针对**带 `public-key` 的** vmess / vless ——
+新增 `qx_obfs_reality()`，`net == "ws"` 时写 `obfs=wss` + `obfs-uri` + `obfs-host`，
+否则写 `obfs=over-tls` + `obfs-host`（取 sni）。不带公钥的 vmess / vless 完全不动
+（仍走 `qx_transport` + `qx_tls`），所以既有节点的输出形态不变，风险面只落在
+本次新加的 Reality 功能上。读取端不需要改：`parser_surge.parse_qx_line` 早就
+按 sample.conf 实现了 `obfs=over-tls` / `obfs=wss` 的映射（`obfs-host` 在
+`over-tls` 下落 `sni`、在 `wss` 下落 `host`），往返已在回归测试里断言。
+
 ## 第一轮修复记录（7.5 / 7.6 / 7.8）
 
 **7.5 引号感知切分** —— 新增 `parser_surge.split_fields()`（`parser_surge.lua`），
@@ -779,6 +845,70 @@ x25519 / bech32 / armor / STREAM，实际只写到 `M._hkdf_sha256` 就停了，
 `tests/age_vectors/README.md` 根本不存在。两者都**未被 git 跟踪**，删除即不可恢复，
 因此删除前已在仓库外留了一份备份（`~/age-lua-wip-backup-2026-10-05/`，含
 `age.lua` 与 `tests/age_test.lua` 两个原文件）。后续若要继续这条线，从该备份恢复即可。
+
+## 第二轮修复记录（7.1 / 7.3 / 7.4）
+
+全部改动集中在 `root/usr/share/substore/output_formats.lua`（输出侧），
+解析侧**一行未改** —— 三处新写法都早就有对应的读取实现，往返由回归测试锁定。
+
+**7.1 `FAMILY_CAPS`（按客户端能力表过滤）** —— 新增一张表，键是输出格式名，
+值是 `{ vless = <bool>, ssr = <bool> }`，只记录各家**不一致**的两个协议
+（其余协议各家都认）：
+
+| flavor | vless | ssr | 依据 |
+|---|---|---|---|
+| surge / surfboard / surgemac | ✗ | ✗ | `manual.nssurge.com` 的 Proxy Protocols 清单、`getsurfboard.com` 的 external-proxy 清单 |
+| loon | ✓ | ✓ | `nsloon.app/docs/Node/` 有独立的 VLESS 与 ShadowsocksR 两节 |
+| egern | ✓ | ✗ | `egernapp.com/docs/configuration/proxies/` 的协议清单有 Vless、无 ssr |
+
+`surge_config(nodes, group_name, flavor)` 改成按这张表丢节点（此前是调用点各传一个
+`supports_ssr` 布尔量 —— 加一个维度就要再加一个参数，调用点一多必然漏传，
+而漏传的默认值是「支持」）。五个调用方（surge / surfboard / surgemac / loon / egern）
+改为传格式名。
+
+**7.3-C QX Reality 的 TLS 标志分叉** —— 新增 `qx_obfs_reality()`，**只对带
+`public-key` 的** vmess / vless 生效：`net == "ws"` 写 `obfs=wss` + `obfs-uri` +
+`obfs-host`，否则写 `obfs=over-tls` + `obfs-host`（取 `sni`）。不带公钥的
+vmess / vless 完全不动，所以既有 QX 节点的输出形态不变 —— 风险面只落在本次新加的
+Reality 功能上（这是选 C 而不是 B 的全部理由）。读取端 `parse_qx_line` 早就实现了
+`obfs=over-tls` / `obfs=wss` 的映射，无需改动。
+
+**7.4-A Loon 位置参数化 + 公钥加引号** —— 新增 `loon_positional()`，Loon 的
+trojan / vmess / vless 凭据改写成端口之后的带引号位置参数（`Trojan,h,p,"密码"`、
+`VLESS,h,p,"UUID"`、`VMess,h,p,加密方式,"UUID"`），Reality 的 `public-key` 按文档
+加双引号（`short-id` 不加）。Surge / Surfboard / SurgeMac 维持具名写法 ——
+复核确认**它们本来就是对的**（见 7.9 的 (f)）。
+
+实施中发现并一并修掉的两个**本轮改动自身**会引入的问题：
+
+* **Loon 的 VMess 加密方式拼写不同** —— 统一模型的 `chacha20-poly1305` 在 Loon 里
+  写作 `chacha20-ietf-poly1305`，模型的 `zero` 是 Xray 专用（Loon 清单里没有）。
+  照抄会让这两类节点在 Loon 上加载失败，因此新增 `LOON_VMESS_CIPHER` 映射，
+  未列出的取值退回 `auto`。**这是位置参数化必须配套的一步**，不是额外功能。
+* **带引号的位置参数遇到值里的双引号** —— `'"'..v..'"'` 在 `v` 含 `"` 时会产出
+  `"pa"ss"`，怎么切没有文档依据。`loon_positional()` 对这种值返回 nil，
+  调用方整条丢弃。顺带修掉了**既有**的同类缺陷：anytls 的 Loon 位置参数
+  （7.4 之前就带引号）此前没有这层防护。
+
+**回归测试**：`tests/anytls_reality_test.lua` 从 110 条扩到 143 条（新增 Loon 位置
+参数与公钥引号断言、Surge 家族整体丢 vless 的断言、QX `obfs=` 分叉与「不带公钥
+维持原样」的对照断言、QX 往返、**Loon 端到端往返**、加密方式映射、双引号边界）；
+`tests/protocol_registry_test.lua` 的 `DROPPED` 表补 `vless` 的 surge / surfboard /
+surgemac 与 `ssr` 的 egern；`tests/output_layer_fixes_test.lua` 的 F6 改挂在 Loon 上
+（surge 侧该节点已被整体丢弃，传输层已无从观察）。README / README.en.md 的
+「SSR 只能输出到 Mihomo、Stash、Loon、Egern、Shadowrocket」一句里 Egern 已删
+（它没有 SSR），并补了 VLESS 的同类说明。
+
+**反向验证**：把 `output_formats.lua` stash 掉（保留全部新测试）后跑三个受影响的
+文件，得到 **20 条 FAIL**，症状与预测逐条对应：
+
+| 文件 | FAIL 数 | 症状 |
+|---|---|---|
+| `tests/anytls_reality_test.lua` | 16 | QX 写的是 `tls-host`/`tls-verification`（无 `obfs=`）；Loon 公钥无引号、凭据是具名；surge/surfboard/surgemac 仍输出 vless 节点；双引号未挡 |
+| `tests/output_layer_fixes_test.lua` | 2 | surge 仍保留 vless 节点与成员引用 |
+| `tests/protocol_registry_test.lua` | 2 | `vless`(surge/surfboard/surgemac) 与 `ssr`(egern) 的 `want dropped got true` |
+
+`git stash pop` 后 **0 条 FAIL**，全套 57 个文件、0 失败。
 
 ---
 

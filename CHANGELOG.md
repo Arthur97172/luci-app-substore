@@ -2,6 +2,99 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.2-r3] - 按客户端协议清单过滤，并按各家文档修正 Loon / QX 的 Reality 与凭据写法（LEGACY_ISSUES 7.1 / 7.3 / 7.4）
+
+`docs/LEGACY_ISSUES.md` 第七节 2.7.2 审计新发现的**第二轮**修复。改动全部落在
+输出侧 `output_formats.lua`，解析侧一行未改 —— 三处新写法早就有对应的读取实现，
+往返由新增的回归测试锁定。本轮同时把为实施 7.4 而核对 Loon 文档时新发现的一批
+不一致记为 **7.9**（未实施，待决策），其中 (a) 会直接影响 Reality 在真机 Loon 上的
+收益，见下。
+
+### 修复 — 7.1：按客户端的协议清单过滤（`FAMILY_CAPS`）
+
+此前 `surge_config` 的调用点各传一个 `supports_ssr` 布尔量，于是 Surge 格式会为
+VLESS 节点生成代理行 —— 而 Surge / Surfboard / SurgeMac 的官方协议清单里都没有
+VLESS。新增一张能力表，只记录各家**不一致**的 `vless` / `ssr` 两个协议：
+
+| flavor | vless | ssr | 依据 |
+|---|---|---|---|
+| surge / surfboard / surgemac | ✗ | ✗ | `manual.nssurge.com` 的 Proxy Protocols、`getsurfboard.com` 的 external-proxy |
+| loon | ✓ | ✓ | `nsloon.app/docs/Node/` 有独立的 VLESS 与 ShadowsocksR 两节 |
+| egern | ✓ | ✗ | `egernapp.com/docs/configuration/proxies/` 有 Vless、无 ssr |
+
+`surge_config(nodes, group_name, flavor)` 改为查表丢节点；五个调用方传格式名。
+用表而不是再加一个布尔参数：加一个维度就要再加一个参数，调用点一多必然漏传，
+而漏传的默认值是「支持」—— 症状正是本轮要修的这个（导出里多出客户端读不懂的行，
+且不报错）。
+
+### 修复 — 7.3-C：QX 带 Reality 公钥的 vmess / vless 改用 `obfs=` 形式的 TLS 标志
+
+QX 官方 `sample.conf` 的注释把「该行带 TLS 标志」列为 `reality-base64-pubkey`
+生效的前提，而 QX 里 vmess / vless 的 TLS 标志写作 `obfs=over-tls`（纯 TLS）/
+`obfs=wss`（ws + TLS），trojan / anytls 才写 `over-tls=true` + `tls-host=`。
+此前一律走 `qx_tls()`（`tls-host=` + `tls-verification=`），QX 会忽略公钥，
+节点静默退回普通 TLS。新增 `qx_obfs_reality()`，**只对带 `public-key` 的**
+vmess / vless 生效 —— 不带公钥的完全不动，既有 QX 节点的输出形态不变，
+风险面只落在本次新加的 Reality 功能上。
+
+### 修复 — 7.4-A：Loon 的凭据改为带引号的位置参数，公钥按文档加双引号
+
+Loon 文档的节点行是 `Trojan,h,p,"密码"`、`VLESS,h,p,"UUID"`、
+`VMess,h,p,加密方式,"UUID"`（`nsloon.app/docs/Node/`），而本生成器一律写具名
+`password=` / `username=`。新增 `loon_positional()` 改写 Loon 的
+trojan / vmess / vless；Reality 的 `public-key` 加双引号、`short-id` 不加。
+
+**Surge / Surfboard / SurgeMac 维持具名写法** —— 复核确认它们本来就是对的：
+`getsurfboard.com` 的 vmess 页示例与 Surge 手册的 vmess / trojan 页都写
+`username=` / `password=`（`LEGACY_ISSUES` 的 7.4 行原先把 Surfboard 与 Loon
+并列，是误判，已更正，详见 7.9 的 (f)）。
+
+实施中一并修掉两个**本轮改动自身**会引入的问题：
+
+- **Loon 的 VMess 加密方式拼写不同**：模型的 `chacha20-poly1305` 在 Loon 里写作
+  `chacha20-ietf-poly1305`，模型的 `zero` 是 Xray 专用（Loon 清单里没有）。
+  照抄会让这两类节点在 Loon 上加载失败 —— 新增 `LOON_VMESS_CIPHER` 映射，
+  未列出的取值退回 `auto`。这是位置参数化必须配套的一步。
+- **带引号的位置参数遇到值里的双引号**：`'"'..v..'"'` 在 `v` 含 `"` 时产出
+  `"pa"ss"`，怎么切没有文档依据 —— 这种值整条丢弃。顺带修掉了**既有**的同类
+  缺陷：anytls 的 Loon 位置参数（7.4 之前就带引号）此前没有这层防护。
+
+### 文档
+
+- `docs/LEGACY_ISSUES.md`：状态表更新；新增 **7.9 明细**（Loon 的 `over-tls` vs
+  `tls`、`udp` vs `udp-relay`、Surge 家族 vmess 缺 `encrypt-method`、Loon 其余
+  协议的位置参数、以及「Loon 的双引号其实**能**保住逗号」这一更正）；
+  新增「第二轮修复记录」含反向验证表。
+- `README.md` / `README.en.md`：SSR 可输出的客户端清单里删掉 **Egern**
+  （其协议清单只有 Shadowsocks，没有 SSR），并补 VLESS 的同类说明。
+- 更正 `output_formats.lua` 里「Loon 的那对引号只是标记，值里的逗号照样是分隔符」
+  这句 —— 与 Loon 文档相反，实际是能保住的；实现仍按「含逗号就丢弃」处理（保守，
+  理由写在该处注释里）。
+
+### 回归测试
+
+`tests/anytls_reality_test.lua` 由 110 条扩到 **143 条**：Loon 位置参数与公钥引号、
+Surge 家族整体丢 vless、QX `obfs=` 分叉与「不带公钥维持原样」的对照、QX 往返、
+**Loon 端到端往返**（生成的配置用本仓库自己的解析器读回来，含「`[Proxy Group]`
+段不得被当成节点」）、加密方式映射、双引号边界。`tests/protocol_registry_test.lua`
+的 `DROPPED` 表补 `vless`(surge/surfboard/surgemac) 与 `ssr`(egern)；
+`tests/output_layer_fixes_test.lua` 的 F6 改挂在 Loon 上（surge 侧该节点已被整体
+丢弃，传输层已无从观察）。
+
+**反向验证**：把 `output_formats.lua` stash 掉（保留全部新测试）后跑三个受影响的
+文件，得到 **20 条 FAIL**（`anytls_reality_test` 16 / `output_layer_fixes_test` 2 /
+`protocol_registry_test` 2），症状与预测逐条对应（QX 写的是 `tls-host` 而非
+`obfs=`；Loon 公钥无引号、凭据是具名；surge/surfboard/surgemac 仍输出 vless 节点；
+`want dropped got true`）。`git stash pop` 后 **0 条 FAIL**，全套 57 个文件、0 失败。
+
+### 待决策（7.9）
+
+**7.9 (a)**：Loon 的 TLS 开关文档写作 `over-tls=true`，本生成器写 `tls=true`
+（Surge 的写法）。Loon 文档**没有**把 `tls` 列为 `over-tls` 的别名，也没说会被
+拒绝 —— 若被忽略，Loon 上的 vmess / vless / trojan 会按明文连，**包括本轮
+Reality 节点**（公钥写了、TLS 标志却没生效）。这条不修，7.4-A 与 Reality 支持
+在真机 Loon 上的收益都要打折。
+
 ## [2.7.2-r2] - 修复 Surge 系 / Loon / QX 行解析的字段级缺陷（LEGACY_ISSUES 7.5 / 7.6）
 
 `docs/LEGACY_ISSUES.md` 第七节 2.7.2 审计新发现的**第一轮**修复。两项都在
@@ -48,7 +141,7 @@ Loon 文档的传输写法是 `transport=<tcp|ws|http>` + `path=` + `host=`，�
 
 **反向验证**：把 `parser_surge.lua` stash 掉后跑该文件得到 **12 条 FAIL**，症状与
 预测完全一致（被截断的凭据、`net=tcp`、`path` / `host` 为 nil、旧写法胜出）；
-恢复后 0 条 FAIL。全套 58 个文件、0 失败。
+恢复后 0 条 FAIL。全套 57 个文件、0 失败（`age_test.lua` 随 7.8 一并删除，故为 57）。
 
 ### 文档 / 构建
 
@@ -99,8 +192,9 @@ Loon 文档的传输写法是 `transport=<tcp|ws|http>` + `path=` + `host=`，�
     reality 参数）。
   - QX：`reality-base64-pubkey` / `reality-hex-shortid`。
   - Surge 家族：**只有 Loon** 输出 `public-key` / `short-id`（`REALITY_FLAVORS`）；
-    Surge / Surfboard / SurgeMac / Egern 写这两个键是「客户端不认识的参数」，
-    Surge 遇到无法解析的代理行会拒绝加载整份配置。
+    Surge / Surfboard / SurgeMac / Egern 写这两个键是「客户端不认识的参数」。
+    （本行原文写的是「Surge 遇到无法解析的代理行会拒绝加载整份配置」——
+     该说法**无官方依据**，已在 `[2.7.2-r2]` 更正，见上一节「更正未经证实的结论」。）
 
 ### 修复（本轮代码级审计发现）
 

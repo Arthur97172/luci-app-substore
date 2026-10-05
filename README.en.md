@@ -63,7 +63,9 @@ group them, then re-emit them in a format your client can consume.
   Surfboard, Surge, Surge Mac, Loon, Egern, Shadowrocket, Quantumult X, sing-box,
   V2Ray / Xray, V2Ray URI, WireGuard / AmneziaWG `.conf`
 - SSR (`ssr://`) can only be emitted to clients that support it (Mihomo, Stash, Loon,
-  Egern, Shadowrocket); other targets drop it
+  Shadowrocket); other targets drop it. VLESS works the same way: Surge / Surfboard /
+  Surge Mac do not list it among their protocols (see `FAMILY_CAPS` in
+  `output_formats.lua` for the per-client protocol lists)
 - **Only content the target client can actually load is emitted**: protocols are
   filtered by target capability, array-valued fields use the type the client expects,
   and proxy-group member lists drop node names that would break their syntax
