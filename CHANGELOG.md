@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.2-r8] - Surge / SurgeMac 一并丢弃 Hysteria v1（LEGACY_ISSUES 7.9 j）
+
+第六轮把 Loon 的 Hysteria v1 丢弃了，本轮把同一条证据链延伸到 Surge 家族。
+
+### 修复 — 7.9(j)：Surge / SurgeMac 丢弃 Hysteria v1
+
+第六轮新发现 (j)：Surge 家族的手册协议清单里写的也是 **"Hysteria 2"**，
+`manual.nssurge.com/policies/hysteria.html` 是 404 而同目录的 `hysteria2.html`
+存在 —— 与 Loon 同一情形，而本生成器仍会给这两家输出 `hysteria, ...` 行。
+
+`FAMILY_CAPS.surge` / `FAMILY_CAPS.surgemac` 各加 `hysteria = false`，整条丢弃。
+被丢的仍然只有上一代 **v1**：Hysteria 2 三家都支持，不受影响。
+
+**Surfboard 不在其中**：`getsurfboard.com` 的 `profile-format/proxy/external-proxy`
+一节及其无斜杠形式都返回 404，无法证实它读不懂 v1。既然没有证据，就不替它丢弃 ——
+能力表对 Surfboard 保持沉默（`caps[p] == nil` 一律保留）。测试里有一条断言钉住这点，
+防止日后有人「顺手统一」。
+
+### 测试
+
+* `tests/protocol_registry_test.lua`：`hysteria` 的丢弃表加 `surge` / `surgemac` 两条。
+* `tests/output_formats_test.lua`：(j) 新增 5 条断言（surge 丢/留、组不含 v1、
+  surgemac 丢、surfboard 留），并删去第六轮那条 `finding j pending` 的占位断言。
+* 反向验证：把 `hysteria = false` 从 surge / surgemac 撤掉，确认测试变红
+  （output_formats 3 条 + registry 1 条），且 surfboard 那条**始终绿**（本就无关）。
+* 全套 **59 个测试文件、0 失败**。
+
 ## [2.7.2-r7] - Loon 丢弃 Hysteria v1、skip-cert-verify 改写 true（LEGACY_ISSUES 7.9 g/h）
 
 第五轮新发现里经决策要实施的两条。第三条（协议名大小写）决定保持现状。
