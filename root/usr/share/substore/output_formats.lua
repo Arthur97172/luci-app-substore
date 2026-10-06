@@ -4,6 +4,7 @@
 
 local util = require("substore.util")
 local clash_meta = require("substore.output_clash_meta")
+local msg = require("substore.msg")
 
 local M = {}
 
@@ -591,7 +592,7 @@ function M.generate(nodes, format, options)
 	if format == "stash" then return M.to_stash(nodes, options) end
 	if format == "clash" then return M.to_clash(nodes, options) end
 	if format == "plain" then return M.to_plain(nodes) end
-	return nil, "unsupported format: " .. tostring(format)
+	return nil, msg.join("Unsupported output format: ", tostring(format))
 end
 
 return M

@@ -2,6 +2,97 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.7.2-r5] - 后端错误串 msgid 化（LEGACY_ISSUES 7.7）
+
+`docs/LEGACY_ISSUES.md` 第七节 2.7.2 审计新发现的**第四轮**修复。
+
+### 修复 — 7.7-A：后端不再有中文字面量
+
+`root/usr/share/substore/*.lua` 里的失败原因会经两条路到达用户 —— 控制器
+`back_to_list` / `back_to_nodes` 的 `?err=`，以及 `meta.error`（视图里的
+`msg.translate`）。这些串此前**硬编码成中文**：英文界面下冒出中文，而且它们
+永远进不了翻译表。现在全部改为**语言中立的英文 msgid**，翻译只发生在显示边界。
+
+**这是硬约束不是风格选择**：后端模块**不能** `require("luci.i18n")` ——
+`substore-cron.sh` 会在独立的 lua 进程里跑 `core.sync`，那里没有 LuCI 环境。
+
+### 新增 `msg.lua` —— 组合消息的拼接与还原
+
+「msgid 前缀 + 动态值」这类消息（`"Invalid proxy config: " .. reason`）整体查表
+必然落空，前缀那半句就永远翻译不了。`msg.lua` 用分隔符 `"\1"` 把各段拼起来，
+显示边界按分隔符**逐段**查表：
+
+```lua
+msg.compose("Target actually connects to a private/reserved address (", ip, ")")
+msg.join("Unsupported proxy protocol: ", scheme)     -- compose 的两段简写
+msg.compose_list(names, " + ")
+msg.translate(s, translate)                          -- 逐段查表
+```
+
+分隔符选 `"\1"`（SOH）有两个依据：它不会出现在任何合法取值里（URL / 主机名 /
+User-Agent / 端口 / 协议名在 `http.lua` 里都校验过）；`util.json_encode` 会把控制
+字符转义成 `\u0001`，所以组合消息**存进 `meta.error` 再读回来仍然完好**。
+拆分只按**第一个**分隔符切、剩下的递归处理，嵌套天然成立 —— 全程精确，没有
+启发式匹配。对已翻译过的串幂等（不含分隔符 → 整串查表落空 → 原样返回）。
+
+### 顺带修掉的一个既有缺陷
+
+控制器此前把**已翻译**的串写进持久化的 `meta.error` —— 中文管理员触发的失败原因
+会泄漏到英文管理员的界面上。现在存的是 msgid，读它的会话按自己的语言翻译。
+
+### 顺带修正的三条用户可见文案
+
+扫描时发现它们**已经会到达用户**、却漏在翻译表之外（中文界面下显示英文）：
+
+| 位置 | 此前 | 现在 |
+|---|---|---|
+| `parser.lua` | `"bad wireguard conf: no [Peer]"` | `"A WireGuard .conf file has no [Peer] section"` |
+| `parser.lua` | `"bad wireguard conf: no usable [Peer] endpoint"` | `"A WireGuard .conf file has no [Peer] with a usable Endpoint"` |
+| `output.lua` / `output_formats.lua` | `"unsupported format: " .. fmt` | `msg.join("Unsupported output format: ", fmt)` |
+
+其余 `"bad ss"` / `"no scheme"` 之类**不动** —— 它们只用于决定「这一行要不要丢」，
+原因串被 `parse_lines` 丢掉，不是用户可见文案。
+
+### 保留的中文字面量（唯一一处）
+
+`node.lua` 的 `"[^,%s，]+"`：这是**正则字符类**，全角逗号是模式的一部分，翻译它
+会破坏「香港，日本」这类全角分隔写法的关键词拆分。测试里按字面量内容列为显式
+例外，并断言例外必须仍存在于源码中。
+
+### 翻译表
+
+`po/zh_Hans/substore.po` 新增 **81 条**。其中 `"JSON"` / `"Clash YAML"` /
+`"WireGuard .conf"` 是**恒等译文**（格式专名，中文界面下原样显示）—— 写成显式
+条目是为了让「每个 msgid 都有译文」这条不变式保持机械可检。
+
+### 回归测试
+
+新增 `tests/backend_i18n_test.lua`（**15 条断言**）：A 扫全部后端源码不得含 CJK；
+B 只认三种**语法位置**（`return` 语句 / `error =` 字段 / `msg.*` 的参数，外加
+`FORMAT_LABELS` 的表值）来核对译文齐全，不靠猜；B2 用**调用** `util.human_duration`
+的方式断言其返回值逐段可译；B3 单独查控制器里裸写、会被持久化的 `error = "…"`。
+
+两条**反腐烂**断言：排除表 `NOT_MESSAGES` 里每一项都必须仍能在源码里找到；
+po 的后端段里不能有死条目。另有非空性断言（`checked >= 70`，当前约 80），
+防止正则写错时静默变成假绿。排除表**逐条列举**（30 条：17 条逐行解析诊断 +
+5 条 shell 片段 + 8 条 YAML/INI 模板片段）而不是按模式匹配 —— 新增一条就得做一次
+有意识的判断。
+
+**同步修改的既有测试（9 个）**：此前断言旧中文字面量的
+`core_userinfo_test` / `data_integrity_test` / `dns_fallback_test` / `list_lock_test` /
+`network_security_test` / `p1_fixes_test` / `p2_batch7_test` / `parser_mixed_format_test` /
+`wireguard_conf_test` 改为断言 msgid 形态。其中 `p2_batch7_test` 的改名规则断言改为
+对**渲染后**的串断言 —— 组合消息在 `"line "` 与数字之间插了分隔符，断言用户真正
+看到的东西才是对的。
+
+**反向验证**：临时在 `probe.lua` 末尾加一条 `return nil, "A brand new untranslated
+message"` 后跑 `tests/backend_i18n_test.lua`，得到 **1 条 FAIL**，确认扫描面不是
+空转；还原后 **15 条全 PASS**。全套 **59 个测试文件、0 失败**。
+
+### 文档
+
+- `docs/LEGACY_ISSUES.md`：状态表 7.7 → 已实施；新增「第四轮修复记录」。
+
 ## [2.7.2-r4] - 真正实现 Egern 的 YAML 生成器（LEGACY_ISSUES 7.2）
 
 `docs/LEGACY_ISSUES.md` 第七节 2.7.2 审计新发现的**第三轮**修复。

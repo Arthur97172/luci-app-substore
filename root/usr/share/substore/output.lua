@@ -8,6 +8,7 @@ local output_v2ray = require("substore.output_v2ray")
 local output_formats = require("substore.output_formats")
 local output_egern = require("substore.output_egern")
 local output_wgconf = require("substore.output_wireguard_conf")
+local msg = require("substore.msg")
 
 local M = {}
 
@@ -149,12 +150,12 @@ M.FORMAT_OPTIONS = {
 function M.generate(nodes, format, options)
 	-- 空串 / 纯空白等同于「未指定」。
 	-- `?target=` 会传进来 ""，而 "" 在 Lua 里是**真值**，所以 `format or DEFAULT_FORMAT`
-	-- 兜不住它，会一路落到 "unsupported format: "（冒号后面什么都没有）——
+	-- 兜不住它，会一路落到 "Unsupported output format: "（冒号后面什么都没有）——
 	-- 用户拿到的是一个说不出原因的错误页。控制器只在 nil 时兜底，覆盖不到空串。
 	format = normalize_format(format)
 	local norm = M.FORMAT_ALIASES[format:lower():gsub("[-_%s]", "")]
 	if not norm then norm = M.FORMAT_ALIASES[format:lower()] end
-	if not norm then return nil, "unsupported format: " .. tostring(format) end
+	if not norm then return nil, msg.join("Unsupported output format: ", tostring(format)) end
 
 	if norm == "clashmeta" then return clash_meta.generate(nodes, options) end
 	if norm == "clash" then return output_formats.to_clash(nodes, options) end
@@ -172,7 +173,7 @@ function M.generate(nodes, format, options)
 	if norm == "wgconf" then return output_wgconf.generate(nodes, options) end
 	if norm == "plain" then return output_formats.to_plain(nodes) end
 
-	return nil, "unsupported format: " .. tostring(format)
+	return nil, msg.join("Unsupported output format: ", tostring(format))
 end
 
 return M
