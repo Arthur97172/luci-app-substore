@@ -262,5 +262,38 @@ local rt_tj = loon_roundtrip(tj_node)
 check("loon rt trojan password", rt_tj and rt_tj.password == "p")
 check("loon rt trojan security", rt_tj and rt_tj.security == "tls")
 
+-- ---------- 7.9(g)：Loon 没有 Hysteria v1 ----------
+-- Loon 的节点类型清单里只有 Hysteria2（nsloon.app/docs/Node/）。注意 hysteria
+-- **2** 是各家通用的，被丢的只有上一代 v1 —— 两者共用同一个输出分支，容易误伤。
+local hy1_node = { proto = "hysteria", name = "H1", server = "1.1.1.1", port = 443, password = "p" }
+local hy2_node = { proto = "hysteria2", name = "H2", server = "1.1.1.1", port = 443, password = "p" }
+local loon_hy = fmts.to_loon({ hy1_node, hy2_node }, { name = "P" })
+check("loon drops hysteria v1", loon_hy:find("hysteria, 1.1.1.1", 1, true) == nil)
+check("loon keeps hysteria2", loon_hy:find('hysteria2, 1.1.1.1, 443, "p"', 1, true) ~= nil)
+-- 被丢弃的节点也不能留在 [Proxy Group] 的成员列表里（否则组引用一个不存在的代理）
+check("loon group has no hysteria v1", loon_hy:find("H1", 1, true) == nil)
+check("loon group keeps hysteria2", loon_hy:find("H2", 1, true) ~= nil)
+-- Surge 家族当前仍输出 hysteria v1 —— 手册的协议清单同样只写 "Hysteria 2"，
+-- manual.nssurge.com/policies/hysteria.html 是 404 而 hysteria2.html 存在。
+-- 这一条是**待决策**（LEGACY_ISSUES 第五轮新发现 (j)），此处如实钉住当前行为，
+-- 实施 (j) 时这条断言要一并翻转。
+local surge_hy = fmts.to_surge({ hy1_node }, { name = "P" })
+check("surge still keeps hysteria v1 (finding j pending)",
+	surge_hy:find("hysteria, 1.1.1.1", 1, true) ~= nil)
+
+-- ---------- 7.9(h)：skip-cert-verify 写 true/false ----------
+-- Loon 文档的示例是 skip-cert-verify=false；Surge 手册只写 "boolean"。
+-- 两家文档里都找不到 `1` 这个取值。
+local scv_node = { proto = "hysteria2", name = "S", server = "1.1.1.1", port = 443,
+	password = "p", ["skip-cert-verify"] = true }
+check("surge skip-cert-verify=true",
+	fmts.surge_line(scv_node, "surge"):find("skip-cert-verify=true", 1, true) ~= nil)
+check("loon skip-cert-verify=true",
+	fmts.surge_line(scv_node, "loon"):find("skip-cert-verify=true", 1, true) ~= nil)
+check("no skip-cert-verify=1",
+	fmts.surge_line(scv_node, "surge"):find("skip-cert-verify=1", 1, true) == nil)
+local rt_scv = loon_roundtrip(scv_node)
+check("loon rt skip-cert-verify", rt_scv and rt_scv["skip-cert-verify"] == true)
+
 print(string.format("\n%d passed, %d failed", passed, failed))
 os.exit(failed == 0 and 0 or 1)
